@@ -97,7 +97,7 @@
       "BASIC": "Tap to open",
       "SCRATCH_CARD": "Scratch to discover",
       "TICKET": "Tear off the ticket",
-      "GIFT_BOX": "Shake it open"
+      "GIFT_BOX": "Tap three times"
     },
     "revealHeadline": "The surprise",
     "revealHeadlineHint": "The big line they see when it is revealed.",
@@ -175,5 +175,34 @@
     "failedTitle": "We couldn't check your payment",
     "failedText": "If you paid, your gift will be upgraded as soon as the payment is confirmed. Reload this page in a moment.",
     "retry": "Reload"
+  },
+  "experience": {
+    "metaTitle": "A gift for {name}",
+    "metaTitleNoName": "A gift for you",
+    "metaDescription": "Someone made this for you. Open it.",
+    "coverEyebrow": "A gift for you",
+    "coverFor": "For {name}",
+    "coverForNoName": "This is for you",
+    "coverFrom": "From {name}",
+    "coverStart": "Tap to begin",
+    "next": "Next",
+    "previous": "Back",
+    "play": "Play voice note",
+    "pause": "Pause voice note",
+    "triviaWrong": "Not quite. Try again.",
+    "triviaRight": "That's it!",
+    "continue": "Continue",
+    "replay": "Watch again",
+    "watermark": "Created with remember.me",
+    "revealBasic": "Tap to open",
+    "revealScratch": "Scratch here",
+    "revealTicket": "Tear off to see where",
+    "revealBox": "Tap the box to open it",
+    "revealNow": "Show me the surprise",
+    "ticketTitle": "Boarding pass",
+    "ticketPassenger": "Passenger",
+    "notFoundTitle": "This gift isn't here",
+    "notFoundText": "The link may be mistyped, or the gift is not published yet. Ask the person who sent it to you.",
+    "notFoundHome": "What is remember.me?"
   }
 }

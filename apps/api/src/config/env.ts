@@ -29,6 +29,8 @@ const EnvSchema = z
     STRIPE_PRICE_ID_PREMIUM: z.string().startsWith('price_'),
     /** One-time price of the custom link order bump. */
     STRIPE_PRICE_ID_CUSTOM_SLUG: z.string().startsWith('price_'),
+    /** Points the Stripe SDK at a local stand-in. Only for automated tests; refused in production. */
+    STRIPE_API_BASE_URL: z.url({ protocol: /^https?$/ }).optional(),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })
@@ -46,6 +48,13 @@ const EnvSchema = z
         code: 'custom',
         path: ['STRIPE_SECRET_KEY'],
         message: 'Production needs a live Stripe key',
+      });
+    }
+    if (deployed && env.STRIPE_API_BASE_URL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STRIPE_API_BASE_URL'],
+        message: 'STRIPE_API_BASE_URL is a test-only setting',
       });
     }
     if (env.EVENT_BUS_DRIVER === 'redis' && !env.REDIS_URL) {

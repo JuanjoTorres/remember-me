@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 const API_PORT = 4000;
 const WEB_PORT = 3000;
+const FAKE_STRIPE_PORT = 4242;
+export const WEBHOOK_SECRET = 'whsec_e2e_placeholder';
 // Overridable so that the suite can run inside a container on the compose network.
 const STORAGE = process.env.E2E_STORAGE_URL ?? 'http://localhost:9090';
 
@@ -25,6 +27,12 @@ export default defineConfig({
   projects: [{ name: 'mobile-chrome', use: { ...devices['Pixel 7'] } }],
   webServer: [
     {
+      command: 'node e2e/fake-stripe.mjs',
+      url: `http://127.0.0.1:${FAKE_STRIPE_PORT}/__health`,
+      reuseExistingServer: false,
+      env: { PORT: String(FAKE_STRIPE_PORT) },
+    },
+    {
       command: 'node dist/main.js',
       cwd: '../api',
       url: `http://localhost:${API_PORT}/health`,
@@ -42,9 +50,10 @@ export default defineConfig({
         S3_BUCKET: 'remember-me',
         S3_ACCESS_KEY_ID: 'local',
         S3_SECRET_ACCESS_KEY: 'local',
-        // Placeholders: the smoke test never reaches Stripe.
+        // Stripe is replaced by the local stand-in in e2e/fake-stripe.mjs.
+        STRIPE_API_BASE_URL: `http://127.0.0.1:${FAKE_STRIPE_PORT}`,
         STRIPE_SECRET_KEY: 'sk_test_e2e_placeholder',
-        STRIPE_WEBHOOK_SECRET: 'whsec_e2e_placeholder',
+        STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
         STRIPE_PRICE_ID_PREMIUM: 'price_e2e_premium',
         STRIPE_PRICE_ID_CUSTOM_SLUG: 'price_e2e_custom_slug',
       },

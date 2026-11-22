@@ -1,15 +1,10 @@
-import { expect, type Page, test } from '@playwright/test';
+import { devices, expect, test } from '@playwright/test';
 import { PHOTO } from './fixtures';
+import { addTextCard, recordScripts } from './helpers';
 
-async function addTextCard(page: Page, text: string) {
-  await page.getByRole('button', { name: '+ Photo & text' }).click();
-  const sheet = page.getByRole('dialog', { name: 'Photo & text' });
-  await sheet.getByRole('textbox', { name: /Text/ }).fill(text);
-  await sheet.getByRole('button', { name: 'Add card' }).click();
-  await expect(sheet).toBeHidden();
-}
-
-test('a creator builds a free gift, hits the free limits and publishes it', async ({ page }) => {
+test('a creator builds a free gift, hits the free limits and publishes it; the recipient opens it', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Create a gift' }).click();
   await expect(page).toHaveURL(/\/create\/[0-9a-f-]{36}$/);
@@ -65,7 +60,7 @@ test('a creator builds a free gift, hits the free limits and publishes it', asyn
   // The surprise, then publish for free
   await page.getByRole('textbox', { name: /^The surprise/ }).fill('We are going to Lisbon!');
   await page.getByRole('textbox', { name: /^Message/ }).fill('Pack light.');
-  await page.getByRole('heading', { name: 'The surprise' }).click();
+  await page.getByRole('heading', { name: 'The surprise', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Publish free' })).toBeEnabled();
   await page.getByRole('button', { name: 'Publish free' }).click();
 
@@ -98,4 +93,69 @@ test('a creator builds a free gift, hits the free limits and publishes it', asyn
     strangerPage.getByRole('heading', { name: "This gift can't be edited from here" }),
   ).toBeVisible();
   await stranger.close();
+
+  // --- The recipient scans the QR code ---
+  const giftUrl = (await link.getAttribute('href')) as string;
+  const recipient = await page
+    .context()
+    .browser()!
+    .newContext({ ...devices['Pixel 7'], locale: 'es-ES' });
+  const phone = await recipient.newPage();
+  const scripts = recordScripts(phone);
+  const mediaRequests: string[] = [];
+  phone.on('request', (request) => {
+    if (/\.(webp|m4a|mp3)$/.test(request.url())) mediaRequests.push(request.url());
+  });
+
+  const response = await phone.goto(giftUrl);
+  expect(response?.status()).toBe(200);
+  await expect(phone).toHaveTitle('A gift for Sarah');
+  expect(await phone.locator('meta[name="robots"]').getAttribute('content')).toContain('noindex');
+
+  // Cover, in the gift's language (English), whatever the phone's language is
+  await expect(phone.getByRole('heading', { name: 'For Sarah' })).toBeVisible();
+  await expect(phone.getByText('From Juan')).toBeVisible();
+  // The photo of the first card is fetched while the cover is still showing
+  await expect.poll(() => mediaRequests.length).toBeGreaterThan(0);
+  await expect(phone.locator('img')).toHaveCount(0);
+
+  await phone.getByRole('button', { name: 'Next' }).click();
+  await expect(phone.getByText('Remember this day?')).toBeVisible();
+  await expect(phone.locator('img')).toBeVisible();
+  await phone.getByRole('button', { name: 'Next' }).click();
+  await expect(phone.getByText('Second card')).toBeVisible();
+  await phone.getByRole('button', { name: 'Back' }).click();
+  await expect(phone.getByText('Remember this day?')).toBeVisible();
+  await phone.getByRole('button', { name: 'Next' }).click();
+  await phone.getByRole('button', { name: 'Next' }).click();
+  await expect(phone.getByText('Third card')).toBeVisible();
+  await phone.getByRole('button', { name: 'Next' }).click();
+
+  // The surprise: free gifts open an envelope and end with the watermark
+  await expect(phone.getByText('We are going to Lisbon!')).toBeHidden();
+  await phone.getByRole('button', { name: 'Tap to open' }).click();
+  await expect(phone.getByText('We are going to Lisbon!')).toBeVisible();
+  await expect(phone.getByText('Pack light.')).toBeVisible();
+  await expect(phone.getByTestId('watermark')).toHaveText('Created with remember.me');
+
+  // The recipient's phone never downloads the editor, the checkout or Stripe
+  const shipped = await scripts();
+  expect(shipped.length).toBeGreaterThan(10_000);
+  for (const marker of [
+    'x-edit-token',
+    'slug-preview',
+    'checkout-session',
+    'remember-me:gifts',
+    'stripe',
+  ]) {
+    expect(shipped, `recipient bundle contains "${marker}"`).not.toContain(marker);
+  }
+  await recipient.close();
+
+  // An unknown link gets a friendly page, in the visitor's language
+  const lost = await page.context().browser()!.newContext({ locale: 'es-ES' });
+  const lostPage = await lost.newPage();
+  expect((await lostPage.goto('/for/no-existe-este-regalo'))?.status()).toBe(404);
+  await expect(lostPage.getByRole('heading', { name: 'Este regalo no está aquí' })).toBeVisible();
+  await lost.close();
 });

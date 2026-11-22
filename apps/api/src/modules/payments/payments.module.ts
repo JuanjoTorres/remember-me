@@ -7,6 +7,18 @@ import { PaymentsController } from './payments.controller.js';
 import { PaymentsService } from './payments.service.js';
 import { STRIPE_CLIENT, StripePaymentGateway } from './stripe-payment-gateway.js';
 
+function createStripeClient(env: Env): Stripe {
+  if (!env.STRIPE_API_BASE_URL) return new Stripe(env.STRIPE_SECRET_KEY);
+  // Automated tests talk to a local stand-in instead of api.stripe.com.
+  const standIn = new URL(env.STRIPE_API_BASE_URL);
+  return new Stripe(env.STRIPE_SECRET_KEY, {
+    host: standIn.hostname,
+    port: standIn.port,
+    protocol: standIn.protocol === 'https:' ? 'https' : 'http',
+    maxNetworkRetries: 0,
+  });
+}
+
 @Module({
   controllers: [PaymentsController],
   providers: [
@@ -14,7 +26,7 @@ import { STRIPE_CLIENT, StripePaymentGateway } from './stripe-payment-gateway.js
     {
       provide: STRIPE_CLIENT,
       inject: [ENV],
-      useFactory: (env: Env) => new Stripe(env.STRIPE_SECRET_KEY),
+      useFactory: createStripeClient,
     },
     { provide: PaymentGateway, useClass: StripePaymentGateway },
   ],

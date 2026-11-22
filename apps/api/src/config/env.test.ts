@@ -64,6 +64,15 @@ describe('loadEnv', () => {
     ).toThrowError(/live Stripe key/);
   });
 
+  it('only allows a Stripe stand-in outside deployed environments', () => {
+    const standIn = { ...valid, STRIPE_API_BASE_URL: 'http://localhost:4242' };
+    expect(loadEnv(standIn).STRIPE_API_BASE_URL).toBe('http://localhost:4242');
+    expect(() => loadEnv({ ...standIn, NODE_ENV: 'staging' })).toThrowError(/test-only/);
+    expect(() =>
+      loadEnv({ ...standIn, NODE_ENV: 'production', STRIPE_SECRET_KEY: 'sk_live_123' }),
+    ).toThrowError(/test-only/);
+  });
+
   it('rejects a short signing secret', () => {
     expect(() => loadEnv({ ...valid, GRANT_SIGNING_SECRET: 'short' })).toThrowError(
       /GRANT_SIGNING_SECRET/,

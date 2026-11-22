@@ -97,7 +97,7 @@
       "BASIC": "Toca para abrir",
       "SCRATCH_CARD": "Rasca para descubrir",
       "TICKET": "Arranca el billete",
-      "GIFT_BOX": "Ábrela agitando"
+      "GIFT_BOX": "Toca tres veces"
     },
     "revealHeadline": "La sorpresa",
     "revealHeadlineHint": "La frase grande que ven al descubrirla.",
@@ -175,5 +175,34 @@
     "failedTitle": "No hemos podido comprobar tu pago",
     "failedText": "Si has pagado, tu regalo se mejorará en cuanto se confirme el pago. Recarga esta página en un momento.",
     "retry": "Recargar"
+  },
+  "experience": {
+    "metaTitle": "Un regalo para {name}",
+    "metaTitleNoName": "Un regalo para ti",
+    "metaDescription": "Alguien ha preparado esto para ti. Ábrelo.",
+    "coverEyebrow": "Un regalo para ti",
+    "coverFor": "Para {name}",
+    "coverForNoName": "Esto es para ti",
+    "coverFrom": "De {name}",
+    "coverStart": "Toca para empezar",
+    "next": "Siguiente",
+    "previous": "Atrás",
+    "play": "Reproducir nota de voz",
+    "pause": "Pausar nota de voz",
+    "triviaWrong": "Casi. Prueba otra vez.",
+    "triviaRight": "¡Eso es!",
+    "continue": "Continuar",
+    "replay": "Ver otra vez",
+    "watermark": "Created with remember.me",
+    "revealBasic": "Toca para abrir",
+    "revealScratch": "Rasca aquí",
+    "revealTicket": "Arranca para ver el destino",
+    "revealBox": "Toca la caja para abrirla",
+    "revealNow": "Enséñame la sorpresa",
+    "ticketTitle": "Tarjeta de embarque",
+    "ticketPassenger": "Pasajero",
+    "notFoundTitle": "Este regalo no está aquí",
+    "notFoundText": "Puede que el enlace esté mal escrito o que el regalo aún no esté publicado. Pregunta a quien te lo envió.",
+    "notFoundHome": "¿Qué es remember.me?"
   }
 }
