@@ -42,24 +42,33 @@ export class MediaService implements OnModuleInit {
         capability: 'AUDIO_UPLOAD',
       });
     }
-    const stored = await this.prisma.mediaAsset.count({ where: { giftId: grant.giftId } });
-    if (stored >= MAX_ASSETS_PER_GIFT) {
-      throw new AppError('CONFLICT', 'This gift has reached its storage limit');
-    }
-
     const media = kind === 'IMAGE' ? await processImage(file) : processAudio(file);
     // The path encodes the gift, which is how the gifts module checks ownership of a URL.
     const storageKey = `gifts/${grant.giftId}/${randomUUID()}.${media.extension}`;
-    await this.storage.put(storageKey, media.body, media.contentType);
-    await this.prisma.mediaAsset.create({
-      data: {
-        giftId: grant.giftId,
-        kind,
-        storageKey,
-        contentType: media.contentType,
-        bytes: media.body.length,
-      },
+
+    // The row is reserved first, under a per-gift lock, so that parallel uploads cannot pass the
+    // ceiling and every stored object is tracked (and therefore deleted with the gift).
+    const asset = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${grant.giftId}))`;
+      if ((await tx.mediaAsset.count({ where: { giftId: grant.giftId } })) >= MAX_ASSETS_PER_GIFT) {
+        throw new AppError('CONFLICT', 'This gift has reached its storage limit');
+      }
+      return tx.mediaAsset.create({
+        data: {
+          giftId: grant.giftId,
+          kind,
+          storageKey,
+          contentType: media.contentType,
+          bytes: media.body.length,
+        },
+      });
     });
+    try {
+      await this.storage.put(storageKey, media.body, media.contentType);
+    } catch (error) {
+      await this.prisma.mediaAsset.delete({ where: { id: asset.id } });
+      throw error;
+    }
     return {
       url: `${this.env.MEDIA_PUBLIC_URL}/${storageKey}`,
       kind,
@@ -68,10 +77,15 @@ export class MediaService implements OnModuleInit {
     };
   }
 
-  /** Idempotent: a repeated event finds nothing left to delete. */
+  /**
+   * Idempotent and resumable: each file is forgotten only after it left storage, so a failure
+   * half-way is finished by the next delivery of the event.
+   */
   async deleteAllOf(giftId: string): Promise<void> {
     const assets = await this.prisma.mediaAsset.findMany({ where: { giftId } });
-    await this.storage.delete(assets.map((asset) => asset.storageKey));
-    await this.prisma.mediaAsset.deleteMany({ where: { giftId } });
+    for (const asset of assets) {
+      await this.storage.delete([asset.storageKey]);
+      await this.prisma.mediaAsset.deleteMany({ where: { id: asset.id } });
+    }
   }
 }

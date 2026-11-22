@@ -8,7 +8,11 @@ import jsqrModule from 'jsqr';
 import { PNG } from 'pngjs';
 import sharp from 'sharp';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { MAX_ASSETS_PER_GIFT } from '../src/modules/media/media.service.js';
+import { ObjectStorage } from '../src/modules/media/object-storage.js';
+import { PaymentSucceededEvent } from '../src/shared/events/contracts.js';
+import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { createTestApp } from './create-test-app.js';
 import { createGift, editor, makePremium, photoCard } from './helpers.js';
@@ -17,12 +21,28 @@ import { createGift, editor, makePremium, photoCard } from './helpers.js';
 const jsQR = ((jsqrModule as unknown as { default?: typeof jsqrModule }).default ??
   jsqrModule) as unknown as typeof import('jsqr').default;
 
-const M4A = Buffer.concat([
-  Buffer.from([0, 0, 0, 0x1c]),
-  Buffer.from('ftypM4A '),
-  Buffer.alloc(64),
-]);
-const MP3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(64)]);
+/** Two consecutive 128 kbps / 44.1 kHz MPEG-1 Layer III frames (417 bytes each), silent. */
+const MP3_FRAMES = Buffer.concat(
+  [0, 1].map(() => Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x00]), Buffer.alloc(413)])),
+);
+const MP3 = Buffer.concat([Buffer.from('ID3'), Buffer.from([4, 0, 0, 0, 0, 0, 0]), MP3_FRAMES]);
+
+function box(type: string, ...content: Buffer[]): Buffer {
+  const body = Buffer.concat(content);
+  const size = Buffer.alloc(4);
+  size.writeUInt32BE(body.length + 8);
+  return Buffer.concat([size, Buffer.from(type, 'latin1'), body]);
+}
+
+/** Minimal ISO media file with one track of the given handler type. */
+function mp4(brand: string, handler: 'soun' | 'vide'): Buffer {
+  const hdlr = box('hdlr', Buffer.alloc(8), Buffer.from(handler), Buffer.alloc(12));
+  return Buffer.concat([
+    box('ftyp', Buffer.from(brand), Buffer.alloc(4), Buffer.from('isom')),
+    box('moov', box('trak', box('mdia', hdlr))),
+  ]);
+}
+const M4A = mp4('M4A ', 'soun');
 
 function jpeg(width: number, height: number): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: '#e8553d' } })
@@ -152,11 +172,94 @@ describe('media and qr', () => {
 
     it('rejects other content even when it is named like audio', async () => {
       const { grant } = await setup({ premium: true });
-      await upload(grant, 'audio', Buffer.from('RIFF....WAVEfmt '), 'voice.mp3').expect(415);
+      const rejected: [string, Buffer][] = [
+        ['a WAV file', Buffer.from('RIFF....WAVEfmt ')],
+        [
+          'an ID3 tag with no audio after it',
+          Buffer.concat([Buffer.from('ID3'), Buffer.alloc(200)]),
+        ],
+        [
+          'text with a UTF-16 byte order mark',
+          Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.alloc(900)]),
+        ],
+        [
+          'a single stray frame header',
+          Buffer.concat([Buffer.from([0xff, 0xfb, 0x90, 0x00]), Buffer.alloc(900)]),
+        ],
+        ['an MP4 video', mp4('mp42', 'vide')],
+        ['a HEIC image', mp4('heic', 'soun')],
+        ['an MP4 without tracks', box('ftyp', Buffer.from('M4A '), Buffer.alloc(8))],
+      ];
+      for (const [what, file] of rejected) {
+        const response = await upload(grant, 'audio', file, 'voice.mp3');
+        expect(response.status, what).toBe(415);
+      }
+      // A bare MP3 stream without an ID3 tag is fine.
+      await upload(grant, 'audio', MP3_FRAMES, 'voice.mp3').expect(201);
+    });
+  });
+
+  describe('storage ceiling', () => {
+    it('holds under parallel uploads', async () => {
+      const { gift, grant } = await setup();
+      const prisma = app.get(PrismaService);
+      await prisma.mediaAsset.createMany({
+        data: Array.from({ length: MAX_ASSETS_PER_GIFT - 2 }, (_, i) => ({
+          giftId: gift.id,
+          kind: 'IMAGE' as const,
+          storageKey: `gifts/${gift.id}/filler-${i}.webp`,
+          contentType: 'image/webp',
+          bytes: 1,
+        })),
+      });
+      const image = await jpeg(20, 20);
+      const statuses = (
+        await Promise.all(Array.from({ length: 5 }, () => upload(grant, 'images', image)))
+      ).map((response) => response.status);
+      expect(statuses.filter((status) => status === 201)).toHaveLength(2);
+      expect(statuses.filter((status) => status === 409)).toHaveLength(3);
+      expect(await prisma.mediaAsset.count({ where: { giftId: gift.id } })).toBe(
+        MAX_ASSETS_PER_GIFT,
+      );
+    });
+
+    it('does not keep a record of a file that could not be stored', async () => {
+      const { gift, grant } = await setup();
+      const storage = app.get(ObjectStorage);
+      const put = vi.spyOn(storage, 'put').mockRejectedValueOnce(new Error('storage is down'));
+      await upload(grant, 'images', await jpeg(20, 20)).expect(500);
+      put.mockRestore();
+      expect(await app.get(PrismaService).mediaAsset.count({ where: { giftId: gift.id } })).toBe(0);
     });
   });
 
   describe('gift deletion', () => {
+    it('keeps the gift when its files cannot be removed, so that deleting can be retried', async () => {
+      const { gift, grant, client } = await setup();
+      const first = (await upload(grant, 'images', await jpeg(50, 50)).expect(201)).body
+        .url as string;
+      const second = (await upload(grant, 'images', await jpeg(60, 60)).expect(201)).body
+        .url as string;
+
+      const storage = app.get(ObjectStorage);
+      const realDelete = storage.delete.bind(storage);
+      let calls = 0;
+      const remove = vi.spyOn(storage, 'delete').mockImplementation(async (keys) => {
+        calls += 1;
+        if (calls === 2) throw new Error('storage is down');
+        return realDelete(keys);
+      });
+
+      await client.remove().expect(500);
+      await client.get().expect(200);
+      expect(await app.get(PrismaService).mediaAsset.count({ where: { giftId: gift.id } })).toBe(1);
+
+      remove.mockRestore();
+      await client.remove().expect(204);
+      for (const url of [first, second]) expect((await fetch(url)).status).toBe(404);
+      expect(await app.get(PrismaService).mediaAsset.count({ where: { giftId: gift.id } })).toBe(0);
+    });
+
     it('removes the stored files of the gift', async () => {
       const { gift, grant, client } = await setup();
       const { url } = (await upload(grant, 'images', await jpeg(50, 50)).expect(201)).body;
@@ -233,6 +336,34 @@ describe('media and qr', () => {
           res.on('end', () => done(null, Buffer.concat(chunks)));
         });
       expect((await decodePng(response)).width).toBe(2048);
+    });
+
+    it('never encodes a dead link: a link replaced after publication keeps working', async () => {
+      const { gift, grant, client } = await setup({ published: true });
+      const custom = `para-sarah-${gift.id.slice(0, 8)}`;
+      await app.get(EventBus).publish(PaymentSucceededEvent, {
+        orderId: `order-${gift.id}`,
+        giftId: gift.id,
+        customSlug: custom,
+      });
+      expect(((await client.get()).body as GiftEditorView).slug).toBe(custom);
+
+      // A grant issued before the payment still names the old link.
+      const response = await qr(grant)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        });
+      const { text } = await decodePng(response);
+      expect(text).toBe(`http://localhost:3000/for/${gift.slug}`);
+      for (const slug of [gift.slug, custom]) {
+        expect((await http().get(`/public/gifts/${slug}`).expect(200)).body.slug).toBe(custom);
+      }
+      // The old link cannot be taken by somebody else.
+      const availability = await http().get('/gifts/slug-availability').query({ slug: gift.slug });
+      expect(availability.body).toMatchObject({ available: false, reason: 'TAKEN' });
     });
 
     it('refuses drafts, unknown formats and missing grants', async () => {

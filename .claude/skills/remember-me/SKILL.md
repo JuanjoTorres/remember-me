@@ -38,6 +38,15 @@ a real file to copy the shape from. Do not paste code from this skill; open the 
 - Handlers must be idempotent: delivery is at least once.
 - If a module needs a fact about a gift (plan, slug), read it from the grant claims, not from `gifts`.
 
+## Touch payments
+
+- Stripe is only imported inside `apps/api/src/modules/payments` (architecture test). Everything goes
+  through `PaymentGateway`; model: `stripe-payment-gateway.ts`.
+- Never send a payment method list to Checkout and never write an amount in code: prices are Stripe Price
+  IDs from the env, amounts are read with `GET /payments/prices`.
+- A webhook handler must stay idempotent: `payment_webhook_logs.processedAt` is set only after the event was
+  fully handled. Model and fake Stripe server for tests: `apps/api/test/payments.test.ts`.
+
 ## Change the database
 
 - Edit `apps/api/prisma/schema.prisma`, then `pnpm --filter api migrate:dev --name <change>` with

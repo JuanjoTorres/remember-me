@@ -23,6 +23,12 @@ const EnvSchema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((value) => value === 'true'),
+    STRIPE_SECRET_KEY: z.string().regex(/^(sk|rk)_(test|live)_/, 'Expected a Stripe secret key'),
+    STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
+    /** One-time price of the full experience. Amounts live in Stripe, never in code. */
+    STRIPE_PRICE_ID_PREMIUM: z.string().startsWith('price_'),
+    /** One-time price of the custom link order bump. */
+    STRIPE_PRICE_ID_CUSTOM_SLUG: z.string().startsWith('price_'),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })
@@ -33,6 +39,13 @@ const EnvSchema = z
         code: 'custom',
         path: ['GRANT_SIGNING_SECRET'],
         message: 'GRANT_SIGNING_SECRET still has the example value',
+      });
+    }
+    if (env.NODE_ENV === 'production' && !/^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STRIPE_SECRET_KEY'],
+        message: 'Production needs a live Stripe key',
       });
     }
     if (env.EVENT_BUS_DRIVER === 'redis' && !env.REDIS_URL) {

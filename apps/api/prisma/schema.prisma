@@ -37,8 +37,9 @@ model Gift {
   editTokenHash     String         @map("edit_token_hash")
   status            GiftStatus     @default(DRAFT)
   isPremium         Boolean        @default(false) @map("is_premium")
-  /// Payment order that upgraded the gift. A plain value (no relation): makes the upgrade idempotent.
-  paidOrderId       String?        @map("paid_order_id")
+  /// Payment orders already applied to the gift. Plain values (no relation): they make applying a
+  /// payment idempotent however often and in whatever order its event is delivered.
+  appliedOrderIds   String[]       @default([]) @map("applied_order_ids")
   locale            String         @default("en")
   recipientName     String         @default("") @map("recipient_name")
   senderName        String         @default("") @map("sender_name")
@@ -51,8 +52,21 @@ model Gift {
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   cards             GiftCard[]
+  slugAliases       GiftSlugAlias[]
 
   @@map("gifts")
+}
+
+/// A link a published gift used to have. It keeps working, so a QR code that was already printed or
+/// downloaded never breaks when the gift gets a custom link.
+model GiftSlugAlias {
+  slug      String   @id
+  giftId    String   @map("gift_id") @db.Uuid
+  gift      Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([giftId])
+  @@map("gift_slug_aliases")
 }
 
 model GiftCard {
@@ -87,4 +101,40 @@ model MediaAsset {
 
   @@index([giftId])
   @@map("media_assets")
+}
+
+enum PaymentOrderStatus {
+  PENDING
+  PAID
+  EXPIRED
+}
+
+/// Owned by the payments module. `giftId` is a plain value on purpose: no relation and no foreign key
+/// to `gifts`, so that payments can be extracted into its own service.
+model PaymentOrder {
+  id                String             @id @default(uuid()) @db.Uuid
+  giftId            String             @map("gift_id")
+  status            PaymentOrderStatus @default(PENDING)
+  stripeSessionId   String?            @unique @map("stripe_session_id")
+  includeCustomSlug Boolean            @default(false) @map("include_custom_slug")
+  customSlug        String?            @map("custom_slug")
+  /// Amount charged, in the smallest currency unit, as reported by Stripe.
+  amountTotal       Int?               @map("amount_total")
+  currency          String?
+  createdAt         DateTime           @default(now()) @map("created_at")
+  paidAt            DateTime?          @map("paid_at")
+
+  @@index([giftId])
+  @@map("payment_orders")
+}
+
+/// One row per Stripe event received: makes webhook handling idempotent.
+model PaymentWebhookLog {
+  eventId     String    @id @map("event_id")
+  type        String
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  /// Set once the event was fully handled. A retry of an unfinished event is processed again.
+  processedAt DateTime? @map("processed_at")
+
+  @@map("payment_webhook_logs")
 }

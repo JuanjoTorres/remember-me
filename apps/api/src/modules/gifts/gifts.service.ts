@@ -98,25 +98,29 @@ export class GiftsService {
       );
     }
     if (reveal) this.mediaPolicy(giftId).assertReveal(reveal);
-    if (gift.status === 'PUBLISHED' && reveal?.headline !== undefined && reveal.headline === '') {
-      throw new AppError('GIFT_INCOMPLETE', 'A published gift needs its surprise', {
-        missing: ['REVEAL_HEADLINE'],
-      });
-    }
 
-    const updated = await this.prisma.gift.update({
-      where: { id: giftId },
-      data: {
-        recipientName: changes.recipientName,
-        senderName: changes.senderName,
-        locale: changes.locale,
-        revealTemplate: reveal?.template,
-        revealHeadline: reveal?.headline,
-        revealMessage: reveal?.message,
-        revealDetail: reveal?.detail,
-        revealImageUrl: reveal?.imageUrl,
-      },
-      include: WITH_CARDS,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Locked so that a concurrent publication sees either the old or the new headline.
+      const current = await this.lock(tx, giftId);
+      if (current.status === 'PUBLISHED' && reveal?.headline === '') {
+        throw new AppError('GIFT_INCOMPLETE', 'A published gift needs its surprise', {
+          missing: ['REVEAL_HEADLINE'],
+        });
+      }
+      return tx.gift.update({
+        where: { id: giftId },
+        data: {
+          recipientName: changes.recipientName,
+          senderName: changes.senderName,
+          locale: changes.locale,
+          revealTemplate: reveal?.template,
+          revealHeadline: reveal?.headline,
+          revealMessage: reveal?.message,
+          revealDetail: reveal?.detail,
+          revealImageUrl: reveal?.imageUrl,
+        },
+        include: WITH_CARDS,
+      });
     });
     return this.view(updated);
   }
@@ -247,10 +251,17 @@ export class GiftsService {
       });
     }
     try {
-      const updated = await this.prisma.gift.update({
-        where: { id: giftId },
-        data: { slug, slugIsCustom: true, customSlugPending: false },
-        include: WITH_CARDS,
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const current = await this.lock(tx, giftId);
+        if (!(await this.slugIsFree(tx, slug, giftId))) {
+          throw new AppError('SLUG_TAKEN', 'This link is already taken');
+        }
+        await this.keepOldLink(tx, current, slug);
+        return tx.gift.update({
+          where: { id: giftId },
+          data: { slug, slugIsCustom: true, customSlugPending: false },
+          include: WITH_CARDS,
+        });
       });
       return this.view(updated);
     } catch (error) {
@@ -261,19 +272,27 @@ export class GiftsService {
 
   async remove(giftId: string, editToken: string | undefined): Promise<void> {
     await this.authorize(giftId, editToken);
-    await this.prisma.gift.delete({ where: { id: giftId } });
+    // Announced first: if another module fails to clean up (stored media), the request fails while
+    // the gift still exists, so the creator can simply try again and nothing is left behind.
     await this.events.publish(GiftDeletedEvent, { giftId });
+    await this.prisma.gift.deleteMany({ where: { id: giftId } });
   }
 
   async slugAvailability(slug: string): Promise<SlugAvailability> {
     if (!SlugSchema.safeParse(slug).success) return { slug, available: false, reason: 'INVALID' };
     if (RESERVED_SLUGS.includes(slug)) return { slug, available: false, reason: 'RESERVED' };
-    const taken = await this.prisma.gift.findUnique({ where: { slug }, select: { id: true } });
-    return taken ? { slug, available: false, reason: 'TAKEN' } : { slug, available: true };
+    return (await this.slugIsFree(this.prisma, slug))
+      ? { slug, available: true }
+      : { slug, available: false, reason: 'TAKEN' };
   }
 
   async getPublic(slug: string): Promise<PublicGift> {
-    const gift = await this.prisma.gift.findUnique({ where: { slug }, include: WITH_CARDS });
+    const gift =
+      (await this.prisma.gift.findUnique({ where: { slug }, include: WITH_CARDS })) ??
+      // A link the gift had before it got its custom one.
+      (await this.prisma.giftSlugAlias
+        .findUnique({ where: { slug }, include: { gift: { include: WITH_CARDS } } })
+        .then((alias) => alias?.gift ?? null));
     if (!gift || gift.status !== 'PUBLISHED') throw new AppError('NOT_FOUND', 'Gift not found');
     return toPublicGift(gift);
   }
@@ -289,20 +308,20 @@ export class GiftsService {
           .findUnique({ where: { id: giftId }, select: { id: true } })
           .then((found) => (found ? this.lock(tx, giftId) : null));
         // The gift may have been deleted after paying; there is nothing left to upgrade.
-        if (!gift || gift.paidOrderId === orderId) return;
+        if (!gift || gift.appliedOrderIds.includes(orderId)) return;
 
         const wantsCustomSlug = customSlug !== null && customSlug !== gift.slug;
         const slugFree =
           wantsCustomSlug &&
           CustomSlugSchema.safeParse(customSlug).success &&
-          (await tx.gift.findUnique({ where: { slug: customSlug }, select: { id: true } })) ===
-            null;
+          (await this.slugIsFree(tx, customSlug, giftId));
+        if (slugFree) await this.keepOldLink(tx, gift, customSlug);
 
         await tx.gift.update({
           where: { id: giftId },
           data: {
             isPremium: true,
-            paidOrderId: orderId,
+            appliedOrderIds: { push: orderId },
             ...(slugFree
               ? { slug: customSlug, slugIsCustom: true, customSlugPending: false }
               : // Someone took the link between checkout and payment: the creator picks another.
@@ -337,6 +356,37 @@ export class GiftsService {
     const gift = await tx.gift.findUnique({ where: { id: giftId }, include: WITH_CARDS });
     if (!gift) throw new AppError('NOT_FOUND', 'Gift not found');
     return gift;
+  }
+
+  /** A slug is free when no gift uses it now and no other gift used it before. */
+  private async slugIsFree(
+    db: Prisma.TransactionClient | PrismaService,
+    slug: string,
+    forGiftId?: string,
+  ): Promise<boolean> {
+    const [gift, alias] = await Promise.all([
+      db.gift.findUnique({ where: { slug }, select: { id: true } }),
+      db.giftSlugAlias.findUnique({ where: { slug } }),
+    ]);
+    return (
+      (gift === null || gift.id === forGiftId) && (alias === null || alias.giftId === forGiftId)
+    );
+  }
+
+  /** Before a published gift changes its link, the old one is kept as an alias. */
+  private async keepOldLink(
+    tx: Prisma.TransactionClient,
+    gift: GiftWithCards,
+    newSlug: string,
+  ): Promise<void> {
+    // Going back to a link the gift already had: it stops being an alias.
+    await tx.giftSlugAlias.deleteMany({ where: { slug: newSlug, giftId: gift.id } });
+    if (gift.status !== 'PUBLISHED' || gift.slug === newSlug) return;
+    await tx.giftSlugAlias.upsert({
+      where: { slug: gift.slug },
+      create: { slug: gift.slug, giftId: gift.id },
+      update: {},
+    });
   }
 
   /** Runs a write that generates a slug, again if the slug happened to be taken. */

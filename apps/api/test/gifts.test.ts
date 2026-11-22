@@ -372,6 +372,21 @@ describe('gifts', () => {
       await client.changeSlug('third-choice').expect(402);
     });
 
+    it('ignores an old order that is delivered again after a newer one', async () => {
+      const { gift, client } = await publishedGift();
+      const [first, second] = [
+        `first-${randomUUID().slice(0, 8)}`,
+        `second-${randomUUID().slice(0, 8)}`,
+      ];
+      await pay(gift.id, first, 'order-a-' + gift.id);
+      await pay(gift.id, second, 'order-b-' + gift.id);
+      await pay(gift.id, first, 'order-a-' + gift.id);
+      expect((await client.get()).body).toMatchObject({ slug: second, customSlugPending: false });
+      // Every link the published gift ever had still opens it.
+      for (const slug of [gift.slug, first, second])
+        await http().get(`/public/gifts/${slug}`).expect(200);
+    });
+
     it('is idempotent for a repeated order and ignores a deleted gift', async () => {
       const { gift, client } = await publishedGift();
       const orderId = `order-${randomUUID()}`;
@@ -422,6 +437,10 @@ describe('gifts', () => {
       expect(changed).toMatchObject({ slug: 'my-own-link-2', customSlugPending: false });
       await http().get('/public/gifts/my-own-link-2').expect(200);
       await client.changeSlug('another-one').expect(402);
+      // The link it was published with still works and stays reserved.
+      expect((await http().get(`/public/gifts/${gift.slug}`).expect(200)).body.slug).toBe(
+        'my-own-link-2',
+      );
     });
   });
 

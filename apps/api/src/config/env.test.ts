@@ -10,6 +10,10 @@ const valid = {
   S3_BUCKET: 'remember-me',
   S3_ACCESS_KEY_ID: 'local',
   S3_SECRET_ACCESS_KEY: 'local',
+  STRIPE_SECRET_KEY: 'sk_test_123',
+  STRIPE_WEBHOOK_SECRET: 'whsec_123',
+  STRIPE_PRICE_ID_PREMIUM: 'price_premium',
+  STRIPE_PRICE_ID_CUSTOM_SLUG: 'price_slug',
 };
 
 describe('loadEnv', () => {
@@ -43,6 +47,21 @@ describe('loadEnv', () => {
     expect(loadEnv(valid)).toMatchObject({ S3_REGION: 'auto', S3_FORCE_PATH_STYLE: true });
     expect(loadEnv({ ...valid, S3_FORCE_PATH_STYLE: 'false' }).S3_FORCE_PATH_STYLE).toBe(false);
     expect(() => loadEnv({ ...valid, S3_BUCKET: undefined })).toThrowError(/S3_BUCKET/);
+  });
+
+  it('validates the Stripe settings', () => {
+    expect(() => loadEnv({ ...valid, STRIPE_SECRET_KEY: 'pk_test_123' })).toThrowError(
+      /STRIPE_SECRET_KEY/,
+    );
+    expect(() => loadEnv({ ...valid, STRIPE_PRICE_ID_PREMIUM: 'prod_123' })).toThrowError(
+      /STRIPE_PRICE_ID_PREMIUM/,
+    );
+    expect(() => loadEnv({ ...valid, STRIPE_PRICE_ID_CUSTOM_SLUG: undefined })).toThrowError(
+      /STRIPE_PRICE_ID_CUSTOM_SLUG/,
+    );
+    expect(() =>
+      loadEnv({ ...valid, NODE_ENV: 'production', GRANT_SIGNING_SECRET: 'x'.repeat(32) }),
+    ).toThrowError(/live Stripe key/);
   });
 
   it('rejects a short signing secret', () => {
