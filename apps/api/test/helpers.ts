@@ -3,10 +3,8 @@ import type { CardInput, CreateGiftResponse } from '@remember-me/shared-types';
 import request from 'supertest';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 
-export const MEDIA_BASE = 'http://media.test/bucket';
-
 export function mediaUrl(giftId: string, fileName: string): string {
-  return `${MEDIA_BASE}/gifts/${giftId}/${fileName}`;
+  return `${process.env['MEDIA_PUBLIC_URL']}/gifts/${giftId}/${fileName}`;
 }
 
 export function photoCard(text = 'Remember this?'): CardInput {

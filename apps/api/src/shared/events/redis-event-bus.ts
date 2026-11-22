@@ -10,6 +10,8 @@ export interface RedisEventBusOptions {
   blockMs?: number;
 }
 
+const STREAM_MAX_LENGTH = 10_000;
+
 type StreamEntry = [id: string, fields: string[]];
 
 /**
@@ -38,7 +40,16 @@ export class RedisEventBus extends EventBus {
 
   async publish<TPayload>(event: EventDefinition<TPayload>, payload: TPayload): Promise<void> {
     const body = JSON.stringify(event.schema.parse(payload));
-    await this.publisher.xadd(streamOf(event), '*', 'payload', body);
+    // Old entries are trimmed so that streams do not grow without bound.
+    await this.publisher.xadd(
+      streamOf(event),
+      'MAXLEN',
+      '~',
+      STREAM_MAX_LENGTH,
+      '*',
+      'payload',
+      body,
+    );
   }
 
   subscribe<TPayload>(
@@ -63,25 +74,31 @@ export class RedisEventBus extends EventBus {
     handler: EventHandler<TPayload>,
   ): Promise<void> {
     const stream = streamOf(event);
-    try {
-      // Start from the beginning of the stream so that events published before this subscriber
-      // connected are not lost.
-      await reader.xgroup('CREATE', stream, group, '0', 'MKSTREAM');
-    } catch (error) {
-      if (!String(error).includes('BUSYGROUP')) throw error;
-    }
+    let groupReady = false;
+    // Where the scan for stale deliveries continues, so that a batch of entries that keep failing
+    // cannot starve the ones behind it.
+    let claimCursor = '0';
 
     while (!this.closed) {
       try {
+        if (!groupReady) {
+          // Start from the beginning of the stream so that events published before this
+          // subscriber connected are not lost.
+          await reader.xgroup('CREATE', stream, group, '0', 'MKSTREAM').catch((error: unknown) => {
+            if (!String(error).includes('BUSYGROUP')) throw error;
+          });
+          groupReady = true;
+        }
         const claimed = (await reader.xautoclaim(
           stream,
           group,
           this.consumer,
           this.retryAfterMs,
-          '0',
+          claimCursor,
           'COUNT',
           20,
         )) as [next: string, entries: StreamEntry[]];
+        claimCursor = claimed[0];
         const fresh = (await reader.xreadgroup(
           'GROUP',
           group,
@@ -100,7 +117,7 @@ export class RedisEventBus extends EventBus {
         }
       } catch (error) {
         if (this.closed) return;
-        this.logger.error(`Reading ${stream} failed: ${String(error)}`);
+        this.logger.error(`Reading ${stream} failed, retrying: ${String(error)}`);
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
     }

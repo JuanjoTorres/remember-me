@@ -41,6 +41,25 @@ function assertPlanAllows(check: PlanCheck, message: string): void {
     throw new AppError('PREMIUM_REQUIRED', message, { capability: check.capability });
 }
 
+function missingToPublish(gift: GiftWithCards): string[] {
+  return [
+    ...(gift.cards.length === 0 ? ['CARDS'] : []),
+    ...(gift.revealHeadline.trim() === '' ? ['REVEAL_HEADLINE'] : []),
+  ];
+}
+
+/**
+ * The link is fixed on first publication, so that it can carry the recipient's name. A link the
+ * creator chose is kept.
+ */
+function publishData(gift: Pick<GiftWithCards, 'slugIsCustom' | 'recipientName'>) {
+  return {
+    status: 'PUBLISHED' as const,
+    publishedAt: new Date(),
+    ...(gift.slugIsCustom ? {} : { slug: generateSlug(gift.recipientName) }),
+  };
+}
+
 @Injectable()
 export class GiftsService {
   constructor(
@@ -52,9 +71,9 @@ export class GiftsService {
 
   async create(request: CreateGiftRequest): Promise<CreateGiftResponse> {
     const { token, hash } = generateEditToken();
-    const gift = await this.withFreshSlug('', (slug) =>
+    const gift = await this.withSlugRetry(() =>
       this.prisma.gift.create({
-        data: { slug, editTokenHash: hash, locale: request.locale },
+        data: { slug: generateSlug(''), editTokenHash: hash, locale: request.locale },
         include: WITH_CARDS,
       }),
     );
@@ -79,6 +98,11 @@ export class GiftsService {
       );
     }
     if (reveal) this.mediaPolicy(giftId).assertReveal(reveal);
+    if (gift.status === 'PUBLISHED' && reveal?.headline !== undefined && reveal.headline === '') {
+      throw new AppError('GIFT_INCOMPLETE', 'A published gift needs its surprise', {
+        missing: ['REVEAL_HEADLINE'],
+      });
+    }
 
     const updated = await this.prisma.gift.update({
       where: { id: giftId },
@@ -106,10 +130,8 @@ export class GiftsService {
     this.mediaPolicy(giftId).assertCard(card);
 
     await this.prisma.$transaction(async (tx) => {
-      // Lock the gift so that two concurrent requests cannot both pass the card limit.
-      await tx.$queryRaw`SELECT id FROM gifts WHERE id = ${giftId}::uuid FOR UPDATE`;
-      const gift = await tx.gift.findUnique({ where: { id: giftId }, include: WITH_CARDS });
-      if (!gift) throw new AppError('NOT_FOUND', 'Gift not found');
+      // Locked so that two concurrent requests cannot both pass the card limit.
+      const gift = await this.lock(tx, giftId);
 
       assertPlanAllows(
         checkAddCard(planOf(gift), gift.cards.length, card.type),
@@ -149,8 +171,18 @@ export class GiftsService {
     cardId: string,
   ): Promise<GiftEditorView> {
     await this.authorize(giftId, editToken);
-    const { count } = await this.prisma.giftCard.deleteMany({ where: { id: cardId, giftId } });
-    if (count === 0) throw new AppError('NOT_FOUND', 'Card not found');
+    await this.prisma.$transaction(async (tx) => {
+      const gift = await this.lock(tx, giftId);
+      if (!gift.cards.some((card) => card.id === cardId)) {
+        throw new AppError('NOT_FOUND', 'Card not found');
+      }
+      if (gift.status === 'PUBLISHED' && gift.cards.length === 1) {
+        throw new AppError('GIFT_INCOMPLETE', 'A published gift needs at least one card', {
+          missing: ['CARDS'],
+        });
+      }
+      await tx.giftCard.delete({ where: { id: cardId } });
+    });
     return this.view(await this.load(giftId));
   }
 
@@ -180,26 +212,25 @@ export class GiftsService {
   }
 
   async publish(giftId: string, editToken: string | undefined): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, editToken);
-    const missing = [
-      ...(gift.cards.length === 0 ? ['CARDS'] : []),
-      ...(gift.revealHeadline.trim() === '' ? ['REVEAL_HEADLINE'] : []),
-    ];
-    if (missing.length > 0) {
-      throw new AppError('GIFT_INCOMPLETE', 'The gift is not ready to be published', { missing });
-    }
-    if (gift.status === 'PUBLISHED') return this.view(gift);
-
-    // The link is fixed on first publication, so it can carry the recipient's name.
-    const publish = (slug: string) =>
-      this.prisma.gift.update({
-        where: { id: giftId },
-        data: { status: 'PUBLISHED', publishedAt: new Date(), slug },
-        include: WITH_CARDS,
-      });
-    const published = gift.slugIsCustom
-      ? await publish(gift.slug)
-      : await this.withFreshSlug(gift.recipientName, publish);
+    await this.authorize(giftId, editToken);
+    const published = await this.withSlugRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        // Locked: a double tap or a payment arriving at the same time must not replace the link.
+        const gift = await this.lock(tx, giftId);
+        const missing = missingToPublish(gift);
+        if (missing.length > 0) {
+          throw new AppError('GIFT_INCOMPLETE', 'The gift is not ready to be published', {
+            missing,
+          });
+        }
+        if (gift.status === 'PUBLISHED') return gift;
+        return tx.gift.update({
+          where: { id: giftId },
+          data: publishData(gift),
+          include: WITH_CARDS,
+        });
+      }),
+    );
     return this.view(published);
   }
 
@@ -248,29 +279,41 @@ export class GiftsService {
   }
 
   /**
-   * Applies a confirmed payment. Safe to run more than once for the same payment: the gift ends up
-   * in the same state.
+   * Applies a confirmed payment: premium, the custom link if one was bought, and publication when
+   * the gift is ready. Running it again for the same order changes nothing.
    */
-  async applyPayment(giftId: string, customSlug: string | null): Promise<void> {
-    const gift = await this.prisma.gift.findUnique({ where: { id: giftId } });
-    // The gift may have been deleted after paying; there is nothing left to upgrade.
-    if (!gift) return;
+  async applyPayment(orderId: string, giftId: string, customSlug: string | null): Promise<void> {
+    await this.withSlugRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        const gift = await tx.gift
+          .findUnique({ where: { id: giftId }, select: { id: true } })
+          .then((found) => (found ? this.lock(tx, giftId) : null));
+        // The gift may have been deleted after paying; there is nothing left to upgrade.
+        if (!gift || gift.paidOrderId === orderId) return;
 
-    await this.prisma.gift.update({ where: { id: giftId }, data: { isPremium: true } });
-    if (customSlug === null || gift.slug === customSlug) return;
+        const wantsCustomSlug = customSlug !== null && customSlug !== gift.slug;
+        const slugFree =
+          wantsCustomSlug &&
+          CustomSlugSchema.safeParse(customSlug).success &&
+          (await tx.gift.findUnique({ where: { slug: customSlug }, select: { id: true } })) ===
+            null;
 
-    const valid = CustomSlugSchema.safeParse(customSlug).success;
-    try {
-      if (!valid) throw new AppError('SLUG_TAKEN', 'Invalid custom link');
-      await this.prisma.gift.update({
-        where: { id: giftId },
-        data: { slug: customSlug, slugIsCustom: true, customSlugPending: false },
-      });
-    } catch (error) {
-      if (!isUniqueViolation(error) && !(error instanceof AppError)) throw error;
-      // Someone took the link between checkout and payment: the creator chooses another for free.
-      await this.prisma.gift.update({ where: { id: giftId }, data: { customSlugPending: true } });
-    }
+        await tx.gift.update({
+          where: { id: giftId },
+          data: {
+            isPremium: true,
+            paidOrderId: orderId,
+            ...(slugFree
+              ? { slug: customSlug, slugIsCustom: true, customSlugPending: false }
+              : // Someone took the link between checkout and payment: the creator picks another.
+                { customSlugPending: wantsCustomSlug ? true : gift.customSlugPending }),
+            ...(gift.status === 'DRAFT' && missingToPublish(gift).length === 0
+              ? publishData({ ...gift, slugIsCustom: gift.slugIsCustom || slugFree })
+              : {}),
+          },
+        });
+      }),
+    );
   }
 
   private async authorize(giftId: string, editToken: string | undefined): Promise<GiftWithCards> {
@@ -288,13 +331,19 @@ export class GiftsService {
     return gift;
   }
 
-  private async withFreshSlug<T>(
-    recipientName: string,
-    write: (slug: string) => Promise<T>,
-  ): Promise<T> {
+  /** Reads the gift inside a transaction while holding a row lock on it. */
+  private async lock(tx: Prisma.TransactionClient, giftId: string): Promise<GiftWithCards> {
+    await tx.$queryRaw`SELECT id FROM gifts WHERE id = ${giftId}::uuid FOR UPDATE`;
+    const gift = await tx.gift.findUnique({ where: { id: giftId }, include: WITH_CARDS });
+    if (!gift) throw new AppError('NOT_FOUND', 'Gift not found');
+    return gift;
+  }
+
+  /** Runs a write that generates a slug, again if the slug happened to be taken. */
+  private async withSlugRetry<T>(write: () => Promise<T>): Promise<T> {
     for (let attempt = 1; ; attempt += 1) {
       try {
-        return await write(generateSlug(recipientName));
+        return await write();
       } catch (error) {
         if (!isUniqueViolation(error) || attempt >= SLUG_ATTEMPTS) throw error;
       }

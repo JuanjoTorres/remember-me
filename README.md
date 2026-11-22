@@ -20,7 +20,7 @@ Node 24, pnpm 12 (`corepack enable`), Docker.
 pnpm install
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
-docker compose up -d postgres
+docker compose up -d postgres storage
 pnpm --filter api migrate:deploy
 pnpm dev
 ```

@@ -6,6 +6,10 @@ const valid = {
   WEB_ORIGIN: 'http://localhost:3000/',
   GRANT_SIGNING_SECRET: 'x'.repeat(32),
   MEDIA_PUBLIC_URL: 'http://localhost:9000/media/',
+  S3_ENDPOINT: 'http://localhost:9090',
+  S3_BUCKET: 'remember-me',
+  S3_ACCESS_KEY_ID: 'local',
+  S3_SECRET_ACCESS_KEY: 'local',
 };
 
 describe('loadEnv', () => {
@@ -35,10 +39,26 @@ describe('loadEnv', () => {
     ).toBe('redis');
   });
 
+  it('reads the storage settings', () => {
+    expect(loadEnv(valid)).toMatchObject({ S3_REGION: 'auto', S3_FORCE_PATH_STYLE: true });
+    expect(loadEnv({ ...valid, S3_FORCE_PATH_STYLE: 'false' }).S3_FORCE_PATH_STYLE).toBe(false);
+    expect(() => loadEnv({ ...valid, S3_BUCKET: undefined })).toThrowError(/S3_BUCKET/);
+  });
+
   it('rejects a short signing secret', () => {
     expect(() => loadEnv({ ...valid, GRANT_SIGNING_SECRET: 'short' })).toThrowError(
       /GRANT_SIGNING_SECRET/,
     );
+  });
+
+  it('refuses the example signing secret outside development', () => {
+    const example = 'change-me-change-me-change-me-change-me';
+    expect(loadEnv({ ...valid, GRANT_SIGNING_SECRET: example }).NODE_ENV).toBe('development');
+    for (const NODE_ENV of ['staging', 'production']) {
+      expect(() => loadEnv({ ...valid, NODE_ENV, GRANT_SIGNING_SECRET: example })).toThrowError(
+        /example value/,
+      );
+    }
   });
 
   it('rejects an unknown NODE_ENV', () => {

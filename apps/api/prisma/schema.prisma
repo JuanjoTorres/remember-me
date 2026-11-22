@@ -37,6 +37,8 @@ model Gift {
   editTokenHash     String         @map("edit_token_hash")
   status            GiftStatus     @default(DRAFT)
   isPremium         Boolean        @default(false) @map("is_premium")
+  /// Payment order that upgraded the gift. A plain value (no relation): makes the upgrade idempotent.
+  paidOrderId       String?        @map("paid_order_id")
   locale            String         @default("en")
   recipientName     String         @default("") @map("recipient_name")
   senderName        String         @default("") @map("sender_name")
@@ -66,4 +68,23 @@ model GiftCard {
 
   @@index([giftId, position])
   @@map("gift_cards")
+}
+
+enum MediaKind {
+  IMAGE
+  AUDIO
+}
+
+/// Owned by the media module. `giftId` is a plain value: no relation to `gifts`.
+model MediaAsset {
+  id          String    @id @default(uuid()) @db.Uuid
+  giftId      String    @map("gift_id") @db.Uuid
+  kind        MediaKind
+  storageKey  String    @unique @map("storage_key")
+  contentType String    @map("content_type")
+  bytes       Int
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([giftId])
+  @@map("media_assets")
 }

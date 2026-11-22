@@ -22,6 +22,12 @@ describe('card contracts', () => {
     ).toBe(false);
   });
 
+  it('rejects NUL characters, which the database cannot store', () => {
+    expect(
+      CardInputSchema.safeParse({ type: 'PHOTO_TEXT', payload: { text: 'a\u0000b' } }).success,
+    ).toBe(false);
+  });
+
   it('does not accept a payload of another card type', () => {
     expect(
       CardInputSchema.safeParse({ type: 'AUDIO_NOTE', payload: { text: 'no audio here' } }).success,

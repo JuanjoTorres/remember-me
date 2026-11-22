@@ -13,7 +13,13 @@ export type Locale = z.infer<typeof LocaleSchema>;
 export const GiftStatusSchema = z.enum(['DRAFT', 'PUBLISHED']);
 export type GiftStatus = z.infer<typeof GiftStatusSchema>;
 
-const text = (max: number) => z.string().trim().max(max);
+/** PostgreSQL cannot store NUL in text, so it is rejected at the edge. */
+const text = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .refine((value) => !value.includes('\u0000'), { message: 'Invalid character' });
 const requiredText = (max: number) => text(max).min(1);
 /** URL of a file previously uploaded through the media endpoint. */
 const mediaUrl = z.url({ protocol: /^https?$/ }).max(500);

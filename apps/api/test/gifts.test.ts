@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import {
   ApiErrorSchema,
@@ -8,7 +9,7 @@ import {
 } from '@remember-me/shared-types';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { GiftDeletedEvent } from '../src/shared/events/contracts.js';
+import { GiftDeletedEvent, PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { createTestApp } from './create-test-app.js';
@@ -220,6 +221,7 @@ describe('gifts', () => {
       await client.removeCard(c).expect(404);
       // A slot is free again, so a free gift can add a third card.
       await client.addCard(photoCard('d')).expect(201);
+      await client.update({ recipientName: 'nul\u0000byte' }).expect(400);
     });
 
     it('cannot touch a card of another gift', async () => {
@@ -277,6 +279,119 @@ describe('gifts', () => {
       const { gift } = await createGift(app);
       await http().get(`/public/gifts/${gift.slug}`).expect(404);
       await http().get('/public/gifts/does-not-exist').expect(404);
+    });
+  });
+
+  describe('a published gift stays complete', () => {
+    it('keeps its last card and its headline', async () => {
+      const { gift, client } = await publishedGift();
+      const response = await client.removeCard(gift.cards[0]!.id).expect(422);
+      expect(response.body).toMatchObject({
+        code: 'GIFT_INCOMPLETE',
+        details: { missing: ['CARDS'] },
+      });
+      await client.update({ reveal: { headline: '  ' } }).expect(422);
+      await client.update({ reveal: { headline: 'Porto instead' } }).expect(200);
+
+      await client.addCard(photoCard('second')).expect(201);
+      await client.removeCard(gift.cards[0]!.id).expect(200);
+    });
+
+    it('gets one link even when publish is tapped twice', async () => {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      await client.addCard(photoCard()).expect(201);
+      await client.update({ recipientName: 'Ana', reveal: { headline: 'Surprise' } }).expect(200);
+
+      const responses = await Promise.all([client.publish(), client.publish(), client.publish()]);
+      const slugs = new Set(responses.map((response) => (response.body as GiftEditorView).slug));
+      expect(responses.map((response) => response.status)).toEqual([200, 200, 200]);
+      expect(slugs.size).toBe(1);
+      await http()
+        .get(`/public/gifts/${[...slugs][0]}`)
+        .expect(200);
+    });
+  });
+
+  describe('payment events', () => {
+    const pay = (giftId: string, customSlug: string | null, orderId = `order-${randomUUID()}`) =>
+      app.get(EventBus).publish(PaymentSucceededEvent, { orderId, giftId, customSlug });
+
+    it('upgrades and publishes a ready draft', async () => {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      await client.addCard(photoCard()).expect(201);
+      await client.update({ recipientName: 'Ana', reveal: { headline: 'Surprise' } }).expect(200);
+
+      await pay(gift.id, null);
+      const view = (await client.get().expect(200)).body as GiftEditorView;
+      expect(view).toMatchObject({
+        plan: 'PREMIUM',
+        status: 'PUBLISHED',
+        customSlugPending: false,
+      });
+      expect(view.slug).toMatch(/^ana-/);
+      expect(view.capabilities.maxCards).toBeNull();
+    });
+
+    it('upgrades an unfinished draft without publishing it', async () => {
+      const { gift, editToken } = await createGift(app);
+      await pay(gift.id, null);
+      const view = (await editor(app, gift.id, editToken).get()).body as GiftEditorView;
+      expect(view).toMatchObject({ plan: 'PREMIUM', status: 'DRAFT' });
+    });
+
+    it('applies the custom link, and keeps it when the gift is published later', async () => {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      const slug = `te-quiero-${randomUUID().slice(0, 8)}`;
+      await pay(gift.id, slug);
+      expect(((await client.get()).body as GiftEditorView).slug).toBe(slug);
+
+      await client.addCard(photoCard()).expect(201);
+      await client.update({ recipientName: 'Ana', reveal: { headline: 'Surprise' } }).expect(200);
+      expect(((await client.publish().expect(200)).body as GiftEditorView).slug).toBe(slug);
+      await http().get(`/public/gifts/${slug}`).expect(200);
+    });
+
+    it('still upgrades when the custom link was taken, and lets the creator pick another once', async () => {
+      const taken = await publishedGift();
+      const { gift, client } = await publishedGift();
+      const orderId = `order-${randomUUID()}`;
+
+      await pay(gift.id, taken.gift.slug, orderId);
+      const view = (await client.get()).body as GiftEditorView;
+      expect(view).toMatchObject({ plan: 'PREMIUM', slug: gift.slug, customSlugPending: true });
+
+      const chosen = `second-choice-${randomUUID().slice(0, 8)}`;
+      await client.changeSlug(chosen).expect(200);
+
+      // The same payment delivered again must not reopen the choice or move the gift.
+      await pay(gift.id, taken.gift.slug, orderId);
+      expect((await client.get()).body).toMatchObject({ slug: chosen, customSlugPending: false });
+      await client.changeSlug('third-choice').expect(402);
+    });
+
+    it('is idempotent for a repeated order and ignores a deleted gift', async () => {
+      const { gift, client } = await publishedGift();
+      const orderId = `order-${randomUUID()}`;
+      const slug = `mi-regalo-${randomUUID().slice(0, 8)}`;
+      await pay(gift.id, slug, orderId);
+      await pay(gift.id, slug, orderId);
+      expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', slug });
+
+      await client.remove().expect(204);
+      await expect(pay(gift.id, null)).resolves.toBeUndefined();
+    });
+
+    it('rejects an invalid custom link but keeps the upgrade', async () => {
+      const { gift, client } = await publishedGift();
+      await pay(gift.id, 'create');
+      expect((await client.get()).body).toMatchObject({
+        plan: 'PREMIUM',
+        slug: gift.slug,
+        customSlugPending: true,
+      });
     });
   });
 

@@ -13,10 +13,28 @@ const EnvSchema = z
     MEDIA_PUBLIC_URL: z
       .url({ protocol: /^https?$/ })
       .transform((value) => value.replace(/\/+$/, '')),
+    /** S3-compatible object storage: Cloudflare R2 in production, S3Mock locally. */
+    S3_ENDPOINT: z.url({ protocol: /^https?$/ }),
+    S3_REGION: z.string().min(1).default('auto'),
+    S3_BUCKET: z.string().min(1),
+    S3_ACCESS_KEY_ID: z.string().min(1),
+    S3_SECRET_ACCESS_KEY: z.string().min(1),
+    S3_FORCE_PATH_STYLE: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })
   .superRefine((env, ctx) => {
+    const deployed = env.NODE_ENV === 'staging' || env.NODE_ENV === 'production';
+    if (deployed && env.GRANT_SIGNING_SECRET.includes('change-me')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['GRANT_SIGNING_SECRET'],
+        message: 'GRANT_SIGNING_SECRET still has the example value',
+      });
+    }
     if (env.EVENT_BUS_DRIVER === 'redis' && !env.REDIS_URL) {
       ctx.addIssue({
         code: 'custom',

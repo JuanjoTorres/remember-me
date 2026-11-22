@@ -21,19 +21,33 @@ nothing that needs a commercial license. Versions are pinned in the `package.jso
 
 ## Development
 
-| Package                                                | License          | Why                                  |
-| ------------------------------------------------------ | ---------------- | ------------------------------------ |
-| typescript                                             | Apache-2.0       | 6.0.x: typescript-eslint needs < 6.1 |
-| turbo, prettier, eslint, typescript-eslint, @eslint/js | MIT              | Task runner, formatter, linter       |
-| eslint-config-next                                     | MIT              | Next.js lint rules                   |
-| tailwindcss, @tailwindcss/postcss                      | MIT              | Styling                              |
-| prisma                                                 | Apache-2.0       | Migrations and client generation     |
-| @nestjs/cli, @nestjs/testing                           | MIT              | Dev server, test module              |
-| vitest, @vitejs/plugin-react                           | MIT              | Test runner                          |
-| unplugin-swc, @swc/core                                | MIT / Apache-2.0 | Decorator metadata in API tests      |
-| supertest                                              | MIT              | HTTP assertions                      |
-| @testcontainers/postgresql                             | MIT              | Real PostgreSQL in integration tests |
-| jsdom, @testing-library/\*                             | MIT              | Component tests                      |
+| Package                                                                   | License          | Why                                  |
+| ------------------------------------------------------------------------- | ---------------- | ------------------------------------ |
+| typescript                                                                | Apache-2.0       | 6.0.x: typescript-eslint needs < 6.1 |
+| turbo, prettier, eslint, typescript-eslint, @eslint/js                    | MIT              | Task runner, formatter, linter       |
+| eslint-config-next                                                        | MIT              | Next.js lint rules                   |
+| tailwindcss, @tailwindcss/postcss                                         | MIT              | Styling                              |
+| prisma                                                                    | Apache-2.0       | Migrations and client generation     |
+| @nestjs/cli, @nestjs/testing                                              | MIT              | Dev server, test module              |
+| vitest, @vitejs/plugin-react                                              | MIT              | Test runner                          |
+| unplugin-swc, @swc/core                                                   | MIT / Apache-2.0 | Decorator metadata in API tests      |
+| supertest                                                                 | MIT              | HTTP assertions                      |
+| @testcontainers/postgresql                                                | MIT              | Real PostgreSQL in integration tests |
+| @testcontainers/redis, testcontainers                                     | MIT              | Real Redis and S3 API in tests       |
+| jsqr, pngjs                                                               | Apache-2.0 / MIT | Decode generated QR codes in tests   |
+| @types/\* (node, express, multer, pg, qrcode, pngjs, supertest, react, …) | MIT              | Type declarations                    |
+| jsdom, @testing-library/\*                                                | MIT              | Component tests                      |
+
+## Container images (development and tests)
+
+| Image              | License    | Why                                                              |
+| ------------------ | ---------- | ---------------------------------------------------------------- |
+| postgres:17-alpine | PostgreSQL | Database                                                         |
+| redis:8-alpine     | see note   | Only in the Redis event bus tests                                |
+| adobe/s3mock:5.2.3 | Apache-2.0 | Local S3 API. `minio/minio` is no longer published on Docker Hub |
+
+Note: Redis 8 is tri-licensed (RSALv2 / SSPLv1 / AGPLv3). It is used as an unmodified service in tests and is
+not distributed with the product. Running it in production is optional (`EVENT_BUS_DRIVER=redis`).
 
 ## Decisions
 
