@@ -84,7 +84,7 @@ test('a creator upgrades with a custom link, and the recipient scratches the sur
     .browser()!
     .newContext({ ...devices['Pixel 7'] });
   const phone = await recipient.newPage();
-  await phone.goto(`/for/${slug}`);
+  await phone.goto(`/for/${slug}`, { waitUntil: 'networkidle' });
   await expect(phone.getByRole('heading', { name: 'For Marta' })).toBeVisible();
   await phone.getByRole('button', { name: 'Next' }).click();
   await expect(phone.getByText('Do you remember?')).toBeVisible();
@@ -130,7 +130,9 @@ test('a creator upgrades with a custom link, and the recipient scratches the sur
     .browser()!
     .newContext({ viewport: { width: 1280, height: 800 } });
   const laptop = await desktop.newPage();
-  await laptop.goto(`/for/${slug}`);
+  // Keyboard navigation only exists once the page is interactive.
+  await laptop.goto(`/for/${slug}`, { waitUntil: 'networkidle' });
+  await expect(laptop.getByRole('heading', { name: 'For Marta' })).toBeVisible();
   await laptop.keyboard.press('ArrowRight');
   await expect(laptop.getByText('Do you remember?')).toBeVisible();
   await laptop.keyboard.press('ArrowRight');

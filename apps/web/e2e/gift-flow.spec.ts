@@ -107,7 +107,7 @@ test('a creator builds a free gift, hits the free limits and publishes it; the r
     if (/\.(webp|m4a|mp3)$/.test(request.url())) mediaRequests.push(request.url());
   });
 
-  const response = await phone.goto(giftUrl);
+  const response = await phone.goto(giftUrl, { waitUntil: 'networkidle' });
   expect(response?.status()).toBe(200);
   await expect(phone).toHaveTitle('A gift for Sarah');
   expect(await phone.locator('meta[name="robots"]').getAttribute('content')).toContain('noindex');
