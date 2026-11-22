@@ -8,3 +8,62 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum GiftStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum CardType {
+  PHOTO_TEXT
+  AUDIO_NOTE
+  TRIVIA
+}
+
+enum RevealTemplate {
+  BASIC
+  SCRATCH_CARD
+  TICKET
+  GIFT_BOX
+}
+
+model Gift {
+  id                String         @id @default(uuid()) @db.Uuid
+  slug              String         @unique
+  /// True once the creator chose the slug (paid custom link); generated slugs may be replaced on publish.
+  slugIsCustom      Boolean        @default(false) @map("slug_is_custom")
+  customSlugPending Boolean        @default(false) @map("custom_slug_pending")
+  /// SHA-256 of the secret edit token. The token itself is never stored.
+  editTokenHash     String         @map("edit_token_hash")
+  status            GiftStatus     @default(DRAFT)
+  isPremium         Boolean        @default(false) @map("is_premium")
+  locale            String         @default("en")
+  recipientName     String         @default("") @map("recipient_name")
+  senderName        String         @default("") @map("sender_name")
+  revealTemplate    RevealTemplate @default(BASIC) @map("reveal_template")
+  revealHeadline    String         @default("") @map("reveal_headline")
+  revealMessage     String         @default("") @map("reveal_message")
+  revealDetail      String         @default("") @map("reveal_detail")
+  revealImageUrl    String?        @map("reveal_image_url")
+  publishedAt       DateTime?      @map("published_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  cards             GiftCard[]
+
+  @@map("gifts")
+}
+
+model GiftCard {
+  id        String   @id @default(uuid()) @db.Uuid
+  giftId    String   @map("gift_id") @db.Uuid
+  gift      Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  position  Int
+  type      CardType
+  /// Shape depends on `type`; validated with the shared Zod contracts on every write.
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([giftId, position])
+  @@map("gift_cards")
+}

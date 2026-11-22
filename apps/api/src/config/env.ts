@@ -7,6 +7,12 @@ const EnvSchema = z
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     /** Public origin of the web app. Used for CORS, redirect validation and QR targets. */
     WEB_ORIGIN: z.url({ protocol: /^https?$/ }).transform((value) => value.replace(/\/+$/, '')),
+    /** Signs the short-lived grants that the media, QR and payment endpoints accept. */
+    GRANT_SIGNING_SECRET: z.string().min(32),
+    /** Public base URL under which uploaded media is served (R2 public bucket or CDN). */
+    MEDIA_PUBLIC_URL: z
+      .url({ protocol: /^https?$/ })
+      .transform((value) => value.replace(/\/+$/, '')),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })
