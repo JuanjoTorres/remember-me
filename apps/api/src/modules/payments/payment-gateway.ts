@@ -30,6 +30,8 @@ export type PaymentEvent =
 /** The payment provider, as this module needs it. Stripe is the only implementation. */
 export abstract class PaymentGateway {
   abstract createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSession>;
+  /** Makes a session unpayable. Resolves quietly if it was already completed or expired. */
+  abstract expireCheckoutSession(sessionId: string): Promise<void>;
   abstract getPrice(priceId: string): Promise<Price>;
   /** Verifies the signature of a webhook delivery. Throws `AppError` when it is not authentic. */
   abstract parseWebhook(rawBody: Buffer, signature: string | undefined): PaymentEvent;

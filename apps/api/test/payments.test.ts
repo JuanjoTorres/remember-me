@@ -55,6 +55,10 @@ function startFakeStripe(calls: StripeCall[]): Promise<Server> {
           url: `https://checkout.stripe.test/c/pay/${id}`,
         });
       }
+      const expire = /^\/v1\/checkout\/sessions\/(cs_test_\w+)\/expire$/.exec(path);
+      if (req.method === 'POST' && expire) {
+        return json({ id: expire[1], object: 'checkout.session', status: 'expired' });
+      }
       if (req.method === 'GET' && path === '/v1/prices/price_premium_test') {
         return json({
           id: 'price_premium_test',
@@ -268,6 +272,42 @@ describe('payments', () => {
       expect(await prisma().paymentOrder.count({ where: { giftId: gift.id } })).toBe(0);
     });
 
+    it('hands out the same open session to a second tab or a double tap', async () => {
+      const { gift } = await readyGift();
+      const body = { giftId: gift.id, ...urls(gift.id) };
+      const responses = await Promise.all([checkout(gift.grant, body), checkout(gift.grant, body)]);
+      const third = await checkout(gift.grant, body).expect(201);
+
+      const sessions = new Set([...responses, third].map((response) => response.body.checkoutUrl));
+      expect(sessions.size).toBe(1);
+      expect(stripeCalls.filter((call) => call.path === '/v1/checkout/sessions')).toHaveLength(1);
+      expect(await prisma().paymentOrder.count({ where: { giftId: gift.id } })).toBe(1);
+    });
+
+    it('expires the previous session when the creator changes the order', async () => {
+      const { gift } = await readyGift();
+      const first = await startCheckout(gift);
+      const second = await startCheckout(gift, 'otro-enlace-mejor');
+
+      expect(second.sessionId).not.toBe(first.sessionId);
+      expect(stripeCalls.map((call) => call.path)).toContain(
+        `/v1/checkout/sessions/${first.sessionId}/expire`,
+      );
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: first.orderId } })).status,
+      ).toBe('EXPIRED');
+    });
+
+    it('refuses a new checkout with an old FREE grant once the gift is paid', async () => {
+      const { gift } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      await deliver(paidEvent(orderId, sessionId)).expect(200);
+      stripeCalls.length = 0;
+      // `gift.grant` was issued before the payment and still says FREE.
+      await checkout(gift.grant, { giftId: gift.id, ...urls(gift.id) }).expect(409);
+      expect(stripeCalls).toEqual([]);
+    });
+
     it('refuses to charge twice for a gift that is already premium', async () => {
       const { gift, client } = await readyGift();
       const { orderId, sessionId } = await startCheckout(gift);
@@ -449,6 +489,46 @@ describe('payments', () => {
       expect(
         (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: second.orderId } })).status,
       ).toBe('PAID');
+    });
+
+    it('flags a second payment for the same gift for refund instead of applying it', async () => {
+      const { gift } = await readyGift();
+      const first = await startCheckout(gift);
+      // A second order that slipped through, e.g. a session opened before the first was paid.
+      const stray = await prisma().paymentOrder.create({
+        data: { giftId: gift.id, stripeSessionId: `cs_test_stray_${randomUUID()}` },
+      });
+      await deliver(paidEvent(first.orderId, first.sessionId)).expect(200);
+      await deliver(paidEvent(stray.id, stray.stripeSessionId!)).expect(200);
+
+      expect(published.map((event) => event.orderId)).toEqual([first.orderId]);
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: stray.id } })).status,
+      ).toBe('REFUND_DUE');
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: first.orderId } })).status,
+      ).toBe('PAID');
+    });
+
+    it('flags the order for refund when the gift was deleted before the payment arrived', async () => {
+      const { gift, client } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      await client.remove().expect(204);
+      await deliver(paidEvent(orderId, sessionId)).expect(200);
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } })).status,
+      ).toBe('REFUND_DUE');
+    });
+
+    it('makes the bought link permanent when it is the one the gift already has', async () => {
+      const { gift, client } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift, gift.slug);
+      await deliver(paidEvent(orderId, sessionId)).expect(200);
+      expect((await client.get()).body).toMatchObject({
+        status: 'PUBLISHED',
+        slug: gift.slug,
+        customSlugPending: false,
+      });
     });
 
     it('acknowledges events it does not use and sessions it does not know', async () => {

@@ -40,11 +40,19 @@ export class StripePaymentGateway extends PaymentGateway {
         success_url: params.successUrl,
         cancel_url: params.cancelUrl,
       },
-      // A retried request for the same order returns the same session instead of a second one.
       { idempotencyKey: `checkout-${params.orderId}` },
     );
     if (!session.url) throw new AppError('INTERNAL', 'Stripe did not return a checkout URL');
     return { id: session.id, url: session.url };
+  }
+
+  async expireCheckoutSession(sessionId: string): Promise<void> {
+    try {
+      await this.stripe.checkout.sessions.expire(sessionId);
+    } catch (error) {
+      // Stripe refuses to expire a session that is no longer open, which is the state we want.
+      if (!(error instanceof Stripe.errors.StripeInvalidRequestError)) throw error;
+    }
   }
 
   async getPrice(priceId: string): Promise<Price> {

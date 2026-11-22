@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type {
   CheckoutSessionRequest,
   CheckoutSessionResponse,
@@ -7,16 +7,18 @@ import type {
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { GiftGrantClaims } from '../../shared/auth/gift-grant.service.js';
-import { PaymentSucceededEvent } from '../../shared/events/contracts.js';
+import { PaymentSucceededEvent, PaymentUnappliedEvent } from '../../shared/events/contracts.js';
 import { EventBus } from '../../shared/events/event-bus.js';
 import { AppError } from '../../shared/http/app-error.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { type PaymentEvent, PaymentGateway } from './payment-gateway.js';
 
 const PRICES_TTL_MS = 10 * 60 * 1000;
+/** Stripe sessions live 24 hours; an open one is handed out again for a little less than that. */
+const SESSION_REUSE_MS = 23 * 60 * 60 * 1000;
 
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OnModuleInit {
   private readonly logger = new Logger('Payments');
   private prices?: { value: PricesResponse; expiresAt: number };
 
@@ -26,6 +28,12 @@ export class PaymentsService {
     private readonly events: EventBus,
     @Inject(ENV) private readonly env: Env,
   ) {}
+
+  onModuleInit(): void {
+    this.events.subscribe(PaymentUnappliedEvent, 'payments', ({ orderId, reason }) =>
+      this.markRefundDue(orderId, reason),
+    );
+  }
 
   async createCheckoutSession(
     grant: GiftGrantClaims,
@@ -44,9 +52,40 @@ export class PaymentsService {
     }
 
     const customSlug = request.includeCustomSlug ? (request.customSlug ?? null) : null;
-    const order = await this.prisma.paymentOrder.create({
-      data: { giftId: request.giftId, includeCustomSlug: customSlug !== null, customSlug },
+
+    // One gift, one open checkout. The grant can be up to 30 minutes old and the creator may have
+    // several tabs open, so the decision is made on this module's own orders, under a per-gift lock.
+    const { order, reused, replaced } = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'checkout:' + request.giftId}))`;
+      const existing = await tx.paymentOrder.findMany({
+        where: { giftId: request.giftId, status: { in: ['PAID', 'PENDING'] } },
+      });
+      if (existing.some((candidate) => candidate.status === 'PAID')) {
+        throw new AppError('CONFLICT', 'This gift already has the full experience');
+      }
+      const reusable = existing.find(
+        (candidate) =>
+          candidate.checkoutUrl !== null &&
+          candidate.customSlug === customSlug &&
+          candidate.createdAt.getTime() > Date.now() - SESSION_REUSE_MS,
+      );
+      if (reusable) return { order: reusable, reused: true, replaced: [] };
+
+      await tx.paymentOrder.updateMany({
+        where: { id: { in: existing.map((candidate) => candidate.id) } },
+        data: { status: 'EXPIRED' },
+      });
+      const created = await tx.paymentOrder.create({
+        data: { giftId: request.giftId, includeCustomSlug: customSlug !== null, customSlug },
+      });
+      return { order: created, reused: false, replaced: existing };
     });
+    if (reused && order.checkoutUrl) return { orderId: order.id, checkoutUrl: order.checkoutUrl };
+
+    // Sessions of replaced orders must stop being payable, or an old tab could still charge.
+    for (const old of replaced) {
+      if (old.stripeSessionId) await this.gateway.expireCheckoutSession(old.stripeSessionId);
+    }
     const session = await this.gateway.createCheckoutSession({
       orderId: order.id,
       giftId: request.giftId,
@@ -60,9 +99,20 @@ export class PaymentsService {
     });
     await this.prisma.paymentOrder.update({
       where: { id: order.id },
-      data: { stripeSessionId: session.id },
+      data: { stripeSessionId: session.id, checkoutUrl: session.url },
     });
     return { orderId: order.id, checkoutUrl: session.url };
+  }
+
+  /** The gift of a paid order no longer exists: flag the order so that the money is returned. */
+  async markRefundDue(orderId: string, reason: string): Promise<void> {
+    if (!isUuid(orderId)) return;
+    const { count } = await this.prisma.paymentOrder.updateMany({
+      where: { id: orderId, status: 'PAID' },
+      data: { status: 'REFUND_DUE' },
+    });
+    if (count > 0)
+      this.logger.error(`REFUND DUE: order ${orderId} could not be applied (${reason})`);
   }
 
   async getPrices(now = Date.now()): Promise<PricesResponse> {
@@ -84,10 +134,14 @@ export class PaymentsService {
     if (!rawBody) throw new AppError('VALIDATION_ERROR', 'Missing request body');
     const event = this.gateway.parseWebhook(rawBody, signature);
 
-    const log = await this.prisma.paymentWebhookLog.upsert({
+    // `createMany` + `skipDuplicates` is a single atomic statement, unlike an upsert, so two
+    // simultaneous deliveries of the same event cannot collide on the primary key.
+    await this.prisma.paymentWebhookLog.createMany({
+      data: [{ eventId: event.id, type: event.type }],
+      skipDuplicates: true,
+    });
+    const log = await this.prisma.paymentWebhookLog.findUniqueOrThrow({
       where: { eventId: event.id },
-      create: { eventId: event.id, type: event.type },
-      update: {},
     });
     if (log.processedAt) return;
 
@@ -121,15 +175,28 @@ export class PaymentsService {
       return;
     }
 
+    const alreadyPaid = await this.prisma.paymentOrder.findFirst({
+      where: { giftId: order.giftId, status: 'PAID', NOT: { id: order.id } },
+    });
+    const paid = {
+      paidAt: order.paidAt ?? new Date(),
+      stripeSessionId: event.sessionId,
+      amountTotal: event.amountTotal,
+      currency: event.currency,
+    };
+    if (alreadyPaid || order.status === 'REFUND_DUE') {
+      // A second payment for the same gift got through (a session opened before the first payment).
+      await this.prisma.paymentOrder.update({
+        where: { id: order.id },
+        data: { ...paid, status: 'REFUND_DUE' },
+      });
+      this.logger.error(`REFUND DUE: order ${order.id} paid again for gift ${order.giftId}`);
+      return;
+    }
+
     await this.prisma.paymentOrder.update({
       where: { id: order.id },
-      data: {
-        status: 'PAID',
-        paidAt: order.paidAt ?? new Date(),
-        stripeSessionId: event.sessionId,
-        amountTotal: event.amountTotal,
-        currency: event.currency,
-      },
+      data: { ...paid, status: 'PAID' },
     });
     // What was bought comes from our own order, not from the webhook payload.
     await this.events.publish(PaymentSucceededEvent, {

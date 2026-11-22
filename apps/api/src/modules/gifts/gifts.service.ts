@@ -20,7 +20,7 @@ import { GiftGrantService } from '../../shared/auth/gift-grant.service.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import { Prisma } from '../../generated/prisma/client.js';
-import { GiftDeletedEvent } from '../../shared/events/contracts.js';
+import { GiftDeletedEvent, PaymentUnappliedEvent } from '../../shared/events/contracts.js';
 import { EventBus } from '../../shared/events/event-bus.js';
 import { AppError } from '../../shared/http/app-error.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
@@ -302,15 +302,17 @@ export class GiftsService {
    * the gift is ready. Running it again for the same order changes nothing.
    */
   async applyPayment(orderId: string, giftId: string, customSlug: string | null): Promise<void> {
-    await this.withSlugRetry(() =>
+    const applied = await this.withSlugRetry(() =>
       this.prisma.$transaction(async (tx) => {
         const gift = await tx.gift
           .findUnique({ where: { id: giftId }, select: { id: true } })
           .then((found) => (found ? this.lock(tx, giftId) : null));
-        // The gift may have been deleted after paying; there is nothing left to upgrade.
-        if (!gift || gift.appliedOrderIds.includes(orderId)) return;
+        if (!gift) return false;
+        if (gift.appliedOrderIds.includes(orderId)) return true;
 
-        const wantsCustomSlug = customSlug !== null && customSlug !== gift.slug;
+        // Buying the link the gift already has simply makes it permanent.
+        const keepsCurrentSlug = customSlug !== null && customSlug === gift.slug;
+        const wantsCustomSlug = customSlug !== null && !keepsCurrentSlug;
         const slugFree =
           wantsCustomSlug &&
           CustomSlugSchema.safeParse(customSlug).success &&
@@ -322,17 +324,30 @@ export class GiftsService {
           data: {
             isPremium: true,
             appliedOrderIds: { push: orderId },
+            ...(keepsCurrentSlug ? { slugIsCustom: true, customSlugPending: false } : {}),
             ...(slugFree
               ? { slug: customSlug, slugIsCustom: true, customSlugPending: false }
               : // Someone took the link between checkout and payment: the creator picks another.
                 { customSlugPending: wantsCustomSlug ? true : gift.customSlugPending }),
             ...(gift.status === 'DRAFT' && missingToPublish(gift).length === 0
-              ? publishData({ ...gift, slugIsCustom: gift.slugIsCustom || slugFree })
+              ? publishData({
+                  ...gift,
+                  slugIsCustom: gift.slugIsCustom || slugFree || keepsCurrentSlug,
+                })
               : {}),
           },
         });
+        return true;
       }),
     );
+    if (!applied) {
+      // The gift was deleted after checkout started: the payments module must give the money back.
+      await this.events.publish(PaymentUnappliedEvent, {
+        orderId,
+        giftId,
+        reason: 'GIFT_NOT_FOUND',
+      });
+    }
   }
 
   private async authorize(giftId: string, editToken: string | undefined): Promise<GiftWithCards> {

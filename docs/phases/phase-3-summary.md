@@ -28,6 +28,15 @@
 - Tests: 89 in the API. The payment tests run the real Stripe SDK against a local stand-in for the Stripe
   API and sign webhooks with the SDK's own test helper.
 
+- Fixes from the review of this phase:
+  - One gift has one open checkout: a double tap or a second tab gets the same Stripe session, a changed
+    order expires the previous session, and a gift with a paid order is refused even with an old grant.
+  - A payment that cannot be delivered (second payment for the same gift, gift deleted before paying) marks
+    the order `REFUND_DUE` and logs an error. `gifts` reports the deleted-gift case with
+    `PaymentUnappliedEvent`.
+  - Buying the link the gift already has makes that link permanent.
+  - Webhook log insertion is atomic under simultaneous deliveries.
+
 ## What changed from the plan (and why)
 
 - **No `payment_method_types` / `automatic_payment_methods`:** the current Stripe API no longer accepts a
@@ -40,7 +49,8 @@
 
 - A checkout whose custom link is taken before payment still charges the order bump; the creator then picks
   another link for free. The web checks availability right before redirecting to reduce this.
-- Refunds are handled in the Stripe Dashboard and do not downgrade the gift.
+- Refunds are handled in the Stripe Dashboard and do not downgrade the gift. Orders in `REFUND_DUE` are not
+  refunded automatically: look for `REFUND DUE` in the API logs or query `payment_orders`.
 
 ## What I need from you
 

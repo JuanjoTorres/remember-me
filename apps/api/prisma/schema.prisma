@@ -107,6 +107,8 @@ enum PaymentOrderStatus {
   PENDING
   PAID
   EXPIRED
+  /// Money was taken but nothing could be delivered (duplicate payment, deleted gift): refund it.
+  REFUND_DUE
 }
 
 /// Owned by the payments module. `giftId` is a plain value on purpose: no relation and no foreign key
@@ -116,6 +118,8 @@ model PaymentOrder {
   giftId            String             @map("gift_id")
   status            PaymentOrderStatus @default(PENDING)
   stripeSessionId   String?            @unique @map("stripe_session_id")
+  /// Stripe Checkout page of this order, so that asking again returns the same session.
+  checkoutUrl       String?            @map("checkout_url")
   includeCustomSlug Boolean            @default(false) @map("include_custom_slug")
   customSlug        String?            @map("custom_slug")
   /// Amount charged, in the smallest currency unit, as reported by Stripe.
