@@ -1,0 +1,15 @@
+{
+  "home": {
+    "tagline": "Un regalo que se abre en el móvil",
+    "title": "Convierte una sorpresa en una historia",
+    "subtitle": "Añade fotos, mensajes y notas de voz. Escanean un QR, recorren tu historia y descubren la sorpresa al final.",
+    "cta": "Crear un regalo",
+    "free": "Empieza gratis. Sin registro.",
+    "step1Title": "Cuenta la historia",
+    "step1Text": "Fotos, palabras, tu voz y una pregunta que solo esa persona sabe responder.",
+    "step2Title": "Esconde la sorpresa",
+    "step2Text": "Un rasca y gana, una tarjeta de embarque o una caja regalo.",
+    "step3Title": "Comparte el QR",
+    "step3Text": "Imprímelo, pégalo en una tarjeta o envía el enlace."
+  }
+}
