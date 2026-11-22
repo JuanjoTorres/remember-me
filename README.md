@@ -34,3 +34,9 @@ pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test
 ```
 
 `pnpm test` needs Docker: the API integration tests start a real PostgreSQL with Testcontainers.
+
+End-to-end smoke test (real browser, built apps, local PostgreSQL and storage):
+
+```bash
+pnpm build && pnpm test:e2e
+```

@@ -36,15 +36,17 @@ nothing that needs a commercial license. Versions are pinned in the `package.jso
 | @testcontainers/redis, testcontainers                                     | MIT              | Real Redis and S3 API in tests       |
 | jsqr, pngjs                                                               | Apache-2.0 / MIT | Decode generated QR codes in tests   |
 | @types/\* (node, express, multer, pg, qrcode, pngjs, supertest, react, …) | MIT              | Type declarations                    |
+| @playwright/test                                                          | Apache-2.0       | End-to-end smoke tests               |
 | jsdom, @testing-library/\*                                                | MIT              | Component tests                      |
 
 ## Container images (development and tests)
 
-| Image              | License    | Why                                                              |
-| ------------------ | ---------- | ---------------------------------------------------------------- |
-| postgres:17-alpine | PostgreSQL | Database                                                         |
-| redis:8-alpine     | see note   | Only in the Redis event bus tests                                |
-| adobe/s3mock:5.2.3 | Apache-2.0 | Local S3 API. `minio/minio` is no longer published on Docker Hub |
+| Image                                      | License    | Why                                                              |
+| ------------------------------------------ | ---------- | ---------------------------------------------------------------- |
+| postgres:17-alpine                         | PostgreSQL | Database                                                         |
+| redis:8-alpine                             | see note   | Only in the Redis event bus tests                                |
+| mcr.microsoft.com/playwright:v1.65.1-noble | Apache-2.0 | Browser for the end-to-end tests                                 |
+| adobe/s3mock:5.2.3                         | Apache-2.0 | Local S3 API. `minio/minio` is no longer published on Docker Hub |
 
 Note: Redis 8 is tri-licensed (RSALv2 / SSPLv1 / AGPLv3). It is used as an unmodified service in tests and is
 not distributed with the product. Running it in production is optional (`EVENT_BUS_DRIVER=redis`).
