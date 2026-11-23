@@ -1,0 +1,43 @@
+import {
+  type CardType,
+  checkAddCard,
+  checkRevealTemplate,
+  type Plan,
+  type PremiumCapability,
+  type RevealTemplate,
+} from '@remember-me/shared-types';
+
+/** Something the creator is about to do that may need the full experience. */
+export type CreatorIntent =
+  | { kind: 'ADD_CARD'; cardType: CardType }
+  | { kind: 'PICK_REVEAL'; template: RevealTemplate }
+  | { kind: 'REMOVE_WATERMARK' }
+  | { kind: 'DOWNLOAD_QR_SVG' };
+
+/** Why the upgrade sheet opens. `WATERMARK` has no API counterpart: it is the creator's own wish. */
+export type UpgradeReason = PremiumCapability | 'WATERMARK';
+
+/**
+ * Decides, before calling the API, whether an action needs an upgrade. Uses the same plan rules as
+ * the backend, which enforces them again.
+ */
+export function upgradeReasonFor(
+  gift: { plan: Plan; cards: readonly unknown[] },
+  intent: CreatorIntent,
+): UpgradeReason | null {
+  if (gift.plan === 'PREMIUM') return null;
+  switch (intent.kind) {
+    case 'ADD_CARD': {
+      const check = checkAddCard(gift.plan, gift.cards.length, intent.cardType);
+      return check.allowed ? null : check.capability;
+    }
+    case 'PICK_REVEAL': {
+      const check = checkRevealTemplate(gift.plan, intent.template);
+      return check.allowed ? null : check.capability;
+    }
+    case 'REMOVE_WATERMARK':
+      return 'WATERMARK';
+    case 'DOWNLOAD_QR_SVG':
+      return 'QR_FORMAT';
+  }
+}
