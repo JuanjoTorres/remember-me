@@ -31,6 +31,12 @@ const EnvSchema = z
     STRIPE_PRICE_ID_CUSTOM_SLUG: z.string().startsWith('price_'),
     /** Points the Stripe SDK at a local stand-in. Only for automated tests; refused in production. */
     STRIPE_API_BASE_URL: z.url({ protocol: /^https?$/ }).optional(),
+    /** Requests one client (IP) may make per minute, over all endpoints. */
+    RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(240),
+    /** Gifts one client (IP) may start per hour. */
+    GIFT_CREATION_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(30),
+    /** Reverse proxies in front of the API, so that the client IP is read from X-Forwarded-For. */
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })

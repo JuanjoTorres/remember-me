@@ -22,9 +22,11 @@ export function SavedInput({
   const [draft, setDraft] = useState(value);
   // Adopt a value saved elsewhere (another field's response) without a re-mount.
   const [seen, setSeen] = useState(value);
+  const [focused, setFocused] = useState(false);
   if (seen !== value) {
     setSeen(value);
-    setDraft(value);
+    // While the creator is typing here, their text wins over an older value coming back.
+    if (!focused) setDraft(value);
   }
 
   const props = {
@@ -32,7 +34,11 @@ export function SavedInput({
     maxLength,
     placeholder,
     onChange: (event: { target: { value: string } }) => setDraft(event.target.value),
+    onFocus: () => {
+      setFocused(true);
+    },
     onBlur: () => {
+      setFocused(false);
       if (draft.trim() !== value) onSave(draft.trim());
     },
   };

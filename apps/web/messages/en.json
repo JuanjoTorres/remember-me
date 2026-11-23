@@ -10,7 +10,8 @@
     "step2Title": "Hide the surprise",
     "step2Text": "A scratch card, a boarding pass or a gift box to open.",
     "step3Title": "Share the QR",
-    "step3Text": "Print it, stick it in a card or send the link."
+    "step3Text": "Print it, stick it in a card or send the link.",
+    "privacy": "Privacy"
   },
   "creator": {
     "loading": "Loading your gift…",
@@ -135,7 +136,7 @@
     "title": "The full experience",
     "close": "Close",
     "reason": {
-      "MAX_CARDS": "Free gifts have up to 3 cards. Upgrade this gift to add as many as the story needs.",
+      "MAX_CARDS": "Free gifts have up to {max} cards. Upgrade this gift to add as many as the story needs.",
       "CARD_TYPE": "Voice notes and trivia are part of the full experience.",
       "AUDIO_UPLOAD": "Voice notes are part of the full experience.",
       "REVEAL_TEMPLATE": "The scratch card, the boarding pass and the gift box are part of the full experience.",
@@ -154,7 +155,7 @@
     "slugLabel": "Custom link",
     "slugPlaceholder": "te-quiero-ana",
     "slugHint": "Lowercase letters, numbers and hyphens.",
-    "slugInvalid": "Use 3 to 40 lowercase letters, numbers or hyphens.",
+    "slugInvalid": "Use {min} to {max} lowercase letters, numbers or hyphens.",
     "slugChecking": "Checking…",
     "slugAvailable": "Available",
     "slugTaken": "Not available. Try another one.",
@@ -174,7 +175,8 @@
     "backToEditor": "Back to the editor",
     "failedTitle": "We couldn't check your payment",
     "failedText": "If you paid, your gift will be upgraded as soon as the payment is confirmed. Reload this page in a moment.",
-    "retry": "Reload"
+    "retry": "Reload",
+    "slugUnchecked": "We couldn't check this link right now. We will check it again when you pay."
   },
   "experience": {
     "metaTitle": "A gift for {name}",
@@ -204,5 +206,23 @@
     "notFoundTitle": "This gift isn't here",
     "notFoundText": "The link may be mistyped, or the gift is not published yet. Ask the person who sent it to you.",
     "notFoundHome": "What is remember.me?"
+  },
+  "privacy": {
+    "title": "Privacy",
+    "updated": "Last updated: 23 November 2026",
+    "intro": "remember.me lets you build a gift that someone opens from a QR code. This page explains what we store to make that work.",
+    "s1Title": "What we store",
+    "s1Text": "The content you add to a gift: names, texts, photos, voice notes, the trivia question and the surprise. Photos are converted and stripped of their metadata (including location) before they are stored. We do not create accounts and we do not ask for your email.",
+    "s2Title": "Payments",
+    "s2Text": "Payments are handled by Stripe. We never see your card details. Stripe gives us the result of the payment and the email you enter at checkout, which we use only for the receipt Stripe sends you.",
+    "s3Title": "Who can see a gift",
+    "s3Text": "Anyone who has the gift's link or QR code. Gift pages are not listed anywhere and search engines are told not to index them. The private edit link is stored only in your browser: keep it safe, because it is the only way to edit or delete the gift.",
+    "s4Title": "Deleting a gift",
+    "s4Text": "You can delete a gift at any time from the editor. Its texts, photos and voice notes are removed from our systems.",
+    "s5Title": "Cookies",
+    "s5Text": "We do not use advertising or analytics cookies. Your browser stores your language preference and the edit links of your gifts.",
+    "s6Title": "Contact",
+    "s6Text": "For any question about your data, write to the address shown on the legal notice of this site.",
+    "back": "Back to remember.me"
   }
 }

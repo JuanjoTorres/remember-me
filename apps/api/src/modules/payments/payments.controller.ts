@@ -15,6 +15,7 @@ import {
   type CheckoutSessionResponse,
   type PricesResponse,
 } from '@remember-me/shared-types';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { GiftGrantGuard, Grant } from '../../shared/auth/gift-grant.guard.js';
 import type { GiftGrantClaims } from '../../shared/auth/gift-grant.service.js';
@@ -39,8 +40,9 @@ export class PaymentsController {
     return this.payments.createCheckoutSession(grant, body);
   }
 
-  /** Called by Stripe. Authenticated by the signature over the raw body. */
+  /** Called by Stripe. Authenticated by the signature over the raw body, so never rate limited. */
   @Post('webhook')
+  @SkipThrottle({ default: true, 'gift-creation': true })
   @HttpCode(200)
   async webhook(
     @Req() request: RawBodyRequest<Request>,

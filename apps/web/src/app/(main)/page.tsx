@@ -45,6 +45,11 @@ export default async function HomePage() {
           {t('cta')}
         </Link>
         <p className="text-ink-soft mt-3 text-center text-sm">{t('free')}</p>
+        <p className="mt-6 text-center text-xs">
+          <Link href="/privacy" className="text-ink-soft underline underline-offset-4">
+            {t('privacy')}
+          </Link>
+        </p>
       </div>
     </main>
   );

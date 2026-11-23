@@ -34,11 +34,40 @@ export function savedGiftsSnapshot(): SavedGift[] {
   return snapshot.gifts;
 }
 
+/** Tokens known in this tab but not (yet) written to storage. */
+const sessionTokens = new Map<string, string>();
+const listeners = new Set<() => void>();
+
+export function subscribeToTokens(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/**
+ * Uses a token for this tab without storing it. A token that arrives in a link is only stored once
+ * the API has accepted it, so a truncated link can never replace a working token.
+ */
+export function holdEditToken(giftId: string, editToken: string): void {
+  sessionTokens.set(giftId, editToken);
+  listeners.forEach((listener) => listener());
+}
+
+/** Drops a token the API refused, falling back to the stored one if there is any. */
+export function dropHeldToken(giftId: string): void {
+  if (sessionTokens.delete(giftId)) listeners.forEach((listener) => listener());
+}
+
 export function getEditToken(giftId: string): string | undefined {
-  return read().find((gift) => gift.giftId === giftId)?.editToken;
+  return sessionTokens.get(giftId) ?? read().find((gift) => gift.giftId === giftId)?.editToken;
+}
+
+export function hasStoredToken(giftId: string): boolean {
+  return read().some((gift) => gift.giftId === giftId);
 }
 
 export function saveGift(giftId: string, editToken: string): void {
+  // Also kept in memory, so the editor works in this tab when storage is unavailable.
+  sessionTokens.set(giftId, editToken);
   const others = read().filter((gift) => gift.giftId !== giftId);
   const entry = { giftId, editToken, savedAt: new Date().toISOString() };
   try {
@@ -49,6 +78,7 @@ export function saveGift(giftId: string, editToken: string): void {
 }
 
 export function forgetGift(giftId: string): void {
+  sessionTokens.delete(giftId);
   try {
     window.localStorage.setItem(
       KEY,

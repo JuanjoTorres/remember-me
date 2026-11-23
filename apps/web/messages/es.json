@@ -10,7 +10,8 @@
     "step2Title": "Esconde la sorpresa",
     "step2Text": "Un rasca y gana, una tarjeta de embarque o una caja regalo.",
     "step3Title": "Comparte el QR",
-    "step3Text": "Imprímelo, pégalo en una tarjeta o envía el enlace."
+    "step3Text": "Imprímelo, pégalo en una tarjeta o envía el enlace.",
+    "privacy": "Privacidad"
   },
   "creator": {
     "loading": "Cargando tu regalo…",
@@ -135,7 +136,7 @@
     "title": "La experiencia completa",
     "close": "Cerrar",
     "reason": {
-      "MAX_CARDS": "Los regalos gratuitos tienen hasta 3 tarjetas. Mejora este regalo para añadir todas las que necesite la historia.",
+      "MAX_CARDS": "Los regalos gratuitos tienen hasta {max} tarjetas. Mejora este regalo para añadir todas las que necesite la historia.",
       "CARD_TYPE": "Las notas de voz y la trivia forman parte de la experiencia completa.",
       "AUDIO_UPLOAD": "Las notas de voz forman parte de la experiencia completa.",
       "REVEAL_TEMPLATE": "El rasca y gana, la tarjeta de embarque y la caja regalo forman parte de la experiencia completa.",
@@ -154,7 +155,7 @@
     "slugLabel": "Enlace personalizado",
     "slugPlaceholder": "te-quiero-ana",
     "slugHint": "Letras minúsculas, números y guiones.",
-    "slugInvalid": "Usa entre 3 y 40 letras minúsculas, números o guiones.",
+    "slugInvalid": "Usa entre {min} y {max} letras minúsculas, números o guiones.",
     "slugChecking": "Comprobando…",
     "slugAvailable": "Disponible",
     "slugTaken": "No está disponible. Prueba con otro.",
@@ -174,7 +175,8 @@
     "backToEditor": "Volver al editor",
     "failedTitle": "No hemos podido comprobar tu pago",
     "failedText": "Si has pagado, tu regalo se mejorará en cuanto se confirme el pago. Recarga esta página en un momento.",
-    "retry": "Recargar"
+    "retry": "Recargar",
+    "slugUnchecked": "No hemos podido comprobar este enlace ahora. Lo comprobaremos de nuevo al pagar."
   },
   "experience": {
     "metaTitle": "Un regalo para {name}",
@@ -204,5 +206,23 @@
     "notFoundTitle": "Este regalo no está aquí",
     "notFoundText": "Puede que el enlace esté mal escrito o que el regalo aún no esté publicado. Pregunta a quien te lo envió.",
     "notFoundHome": "¿Qué es remember.me?"
+  },
+  "privacy": {
+    "title": "Privacidad",
+    "updated": "Última actualización: 23 de noviembre de 2026",
+    "intro": "remember.me te permite crear un regalo que alguien abre desde un código QR. Esta página explica qué guardamos para que funcione.",
+    "s1Title": "Qué guardamos",
+    "s1Text": "El contenido que añades al regalo: nombres, textos, fotos, notas de voz, la pregunta de trivia y la sorpresa. Las fotos se convierten y se les quitan los metadatos (incluida la ubicación) antes de guardarlas. No creamos cuentas ni te pedimos el correo.",
+    "s2Title": "Pagos",
+    "s2Text": "Los pagos los gestiona Stripe. Nunca vemos los datos de tu tarjeta. Stripe nos comunica el resultado del pago y el correo que indicas al pagar, que solo se usa para el recibo que te envía Stripe.",
+    "s3Title": "Quién puede ver un regalo",
+    "s3Text": "Cualquier persona que tenga el enlace o el código QR del regalo. Las páginas de regalo no aparecen en ningún listado y se indica a los buscadores que no las indexen. El enlace privado de edición solo se guarda en tu navegador: consérvalo, porque es la única forma de editar o eliminar el regalo.",
+    "s4Title": "Eliminar un regalo",
+    "s4Text": "Puedes eliminar un regalo en cualquier momento desde el editor. Sus textos, fotos y notas de voz se borran de nuestros sistemas.",
+    "s5Title": "Cookies",
+    "s5Text": "No usamos cookies de publicidad ni de analítica. Tu navegador guarda tu preferencia de idioma y los enlaces de edición de tus regalos.",
+    "s6Title": "Contacto",
+    "s6Text": "Para cualquier consulta sobre tus datos, escribe a la dirección que figura en el aviso legal de este sitio.",
+    "back": "Volver a remember.me"
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import type { GiftEditorView } from '@remember-me/shared-types';
-import { slugify } from '@remember-me/shared-types';
+import { PLAN_CAPABILITIES, slugify } from '@remember-me/shared-types';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -52,7 +52,7 @@ export function PremiumUpgradeSheet({
   });
 
   const [includeSlug, setIncludeSlug] = useState(false);
-  const [slug, setSlug] = useState(() => slugify(gift.recipientName));
+  const [slug, setSlug] = useState('');
   const [slugState, setSlugState] = useState<SlugState>('empty');
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +62,7 @@ export function PremiumUpgradeSheet({
   const total = prices.data
     ? prices.data.premium.amount + (includeSlug ? prices.data.customSlug.amount : 0)
     : null;
-  const slugBlocksPayment = includeSlug && slugState !== 'available';
+  const slugBlocksPayment = includeSlug && slugState !== 'available' && slugState !== 'unchecked';
 
   async function pay() {
     setError(null);
@@ -94,7 +94,9 @@ export function PremiumUpgradeSheet({
   return (
     <Sheet open={open} onClose={onClose} title={t('title')} closeLabel={t('close')}>
       {reason && (
-        <p className="text-ink-soft mt-2 text-[0.95rem] leading-relaxed">{t(`reason.${reason}`)}</p>
+        <p className="text-ink-soft mt-2 text-[0.95rem] leading-relaxed">
+          {t(`reason.${reason}`, { max: PLAN_CAPABILITIES.FREE.maxCards ?? 0 })}
+        </p>
       )}
 
       <ul className="mt-5 space-y-2.5">
@@ -114,7 +116,11 @@ export function PremiumUpgradeSheet({
             type="checkbox"
             className="accent-ember mt-1 size-5 shrink-0"
             checked={includeSlug}
-            onChange={(event) => setIncludeSlug(event.target.checked)}
+            onChange={(event) => {
+              setIncludeSlug(event.target.checked);
+              // Suggest a link from the name as it is now, the first time the extra is ticked.
+              if (event.target.checked && slug === '') setSlug(slugify(gift.recipientName));
+            }}
           />
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline justify-between gap-3">

@@ -24,6 +24,8 @@ export function useGiftEditor(giftId: string, editToken: string) {
 
   const mutation = useMutation({
     mutationFn: (action: GiftAction) => action(api),
+    // One change at a time per gift: responses can never arrive out of order and overwrite newer state.
+    scope: { id: `gift-${giftId}` },
     onMutate: () => setFailed(false),
     onSuccess: (gift) => queryClient.setQueryData(queryKey, gift),
     onError: (error) => {

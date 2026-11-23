@@ -2,7 +2,7 @@
 
 import { MEDIA_LIMITS } from '@remember-me/shared-types';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isApiError } from '@/features/shared/api/client';
 import { Button } from '@/features/shared/ui/Button';
 import { uploadMedia } from '../api';
@@ -13,9 +13,11 @@ interface MediaInputProps {
   editor: Pick<GiftEditor, 'withGrant' | 'openUpgrade'>;
   value: string | null;
   onChange: (url: string | null) => void;
+  /** Told while a file is uploading (or recording), so that the form is not saved half-way. */
+  onBusy?: (busy: boolean) => void;
 }
 
-function useUpload(editor: MediaInputProps['editor']) {
+function useUpload(editor: MediaInputProps['editor'], onBusy?: (busy: boolean) => void) {
   const t = useTranslations('creator');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +28,7 @@ function useUpload(editor: MediaInputProps['editor']) {
     name: string,
   ): Promise<string | null> {
     setBusy(true);
+    onBusy?.(true);
     setError(null);
     try {
       return (await editor.withGrant((grant) => uploadMedia(grant, kind, file, name))).url;
@@ -38,16 +41,17 @@ function useUpload(editor: MediaInputProps['editor']) {
       return null;
     } finally {
       setBusy(false);
+      onBusy?.(false);
     }
   }
   return { busy, error, setError, upload };
 }
 
 /** Photo picker: compresses in the browser, uploads, and shows the stored image. */
-export function ImagePicker({ editor, value, onChange }: MediaInputProps) {
+export function ImagePicker({ editor, value, onChange, onBusy }: MediaInputProps) {
   const t = useTranslations('creator');
   const input = useRef<HTMLInputElement>(null);
-  const { busy, error, upload } = useUpload(editor);
+  const { busy, error, upload } = useUpload(editor, onBusy);
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -125,12 +129,22 @@ function canRecord(): boolean {
 }
 
 /** Voice note: record in the browser (where it can produce M4A) or pick an M4A/MP3 file. */
-export function AudioInput({ editor, value, onChange }: MediaInputProps) {
+export function AudioInput({ editor, value, onChange, onBusy }: MediaInputProps) {
   const t = useTranslations('creator');
   const input = useRef<HTMLInputElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const [recording, setRecording] = useState(false);
-  const { busy, error, setError, upload } = useUpload(editor);
+  const { busy, error, setError, upload } = useUpload(editor, onBusy);
+  const discarded = useRef(false);
+
+  useEffect(
+    () => () => {
+      // Leaving the form while recording: release the microphone and throw the take away.
+      discarded.current = true;
+      if (recorder.current?.state === 'recording') recorder.current.stop();
+    },
+    [],
+  );
 
   async function store(file: Blob, name: string) {
     if (file.size > MEDIA_LIMITS.audioMaxBytes) return setError(t('fileTooLarge'));
@@ -149,12 +163,15 @@ export function AudioInput({ editor, value, onChange }: MediaInputProps) {
       active.onstop = () => {
         clearTimeout(limit);
         stream.getTracks().forEach((track) => track.stop());
+        if (discarded.current) return;
         setRecording(false);
+        onBusy?.(false);
         void store(new Blob(chunks, { type: RECORDING_TYPE }), 'voice.m4a');
       };
       recorder.current = active;
       active.start();
       setRecording(true);
+      onBusy?.(true);
     } catch {
       setError(t('microphoneError'));
     }

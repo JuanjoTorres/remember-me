@@ -4,12 +4,12 @@ import type { Card, CardType } from '@remember-me/shared-types';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { PremiumUpgradeSheet } from '@/features/checkout/PremiumUpgradeSheet';
 import { isApiError } from '@/features/shared/api/client';
 import { Button } from '@/features/shared/ui/Button';
 import { Field } from '@/features/shared/ui/Field';
-import { forgetGift } from '../storage';
+import { dropHeldToken, forgetGift, hasStoredToken, saveGift } from '../storage';
 import { useGiftEditor } from '../useGiftEditor';
 import { CardList } from './CardList';
 import { type CardDraft, CardSheet } from './CardSheet';
@@ -47,6 +47,14 @@ export function GiftEditor({ giftId, editToken }: { giftId: string; editToken: s
   const editor = useGiftEditor(giftId, editToken);
   const [draft, setDraft] = useState<CardDraft | null>(null);
   const { gift } = editor;
+  const refused = isApiError(editor.loadError, 'UNAUTHORIZED');
+
+  useEffect(() => {
+    // The API accepted the token: now it is safe to remember it on this device.
+    if (gift) saveGift(giftId, editToken);
+    // The API refused a token that came from a link: go back to the stored one, if any.
+    else if (refused && hasStoredToken(giftId)) dropHeldToken(giftId);
+  }, [gift, refused, giftId, editToken]);
 
   if (editor.loading) {
     return <p className="text-ink-soft py-20 text-center">{t('loading')}</p>;
@@ -76,6 +84,16 @@ export function GiftEditor({ giftId, editToken }: { giftId: string; editToken: s
     ...(gift.reveal.headline === '' ? [t('missingHeadline')] : []),
   ];
   const limit = gift.capabilities.maxCards;
+
+  const sharePanel = (
+    <SharePanel
+      gift={gift}
+      editToken={editToken}
+      withGrant={editor.withGrant}
+      onUpgrade={editor.openUpgrade}
+      onChangeSlug={async (slug) => (await editor.run((api) => api.changeSlug(slug))) !== null}
+    />
+  );
 
   async function remove() {
     if (!window.confirm(t('deleteConfirm'))) return;
@@ -107,15 +125,7 @@ export function GiftEditor({ giftId, editToken }: { giftId: string; editToken: s
             {t('publishedTitle')}
           </h1>
           <p className="text-ink-soft mt-2 mb-5 leading-relaxed">{t('publishedText')}</p>
-          <SharePanel
-            gift={gift}
-            editToken={editToken}
-            withGrant={editor.withGrant}
-            onUpgrade={editor.openUpgrade}
-            onChangeSlug={async (slug) =>
-              (await editor.run((api) => api.changeSlug(slug))) !== null
-            }
-          />
+          {sharePanel}
         </div>
       )}
 
@@ -185,6 +195,9 @@ export function GiftEditor({ giftId, editToken }: { giftId: string; editToken: s
       <Section step="3" title={t('revealTitle')} hint={t('revealHint')}>
         <RevealSection gift={gift} editor={editor} />
       </Section>
+
+      {/* A draft has no QR yet, but its private edit link must be saved from the start. */}
+      {!published && sharePanel}
 
       {free && published && (
         <Button block variant="secondary" onClick={() => editor.openUpgrade('WATERMARK')}>

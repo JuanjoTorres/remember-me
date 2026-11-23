@@ -14,6 +14,11 @@ COPY packages/shared-types packages/shared-types
 COPY apps/api apps/api
 RUN pnpm --filter api... build
 
+# One-shot image that applies the committed migrations (needs the Prisma CLI, a dev dependency).
+FROM build AS migrate
+WORKDIR /repo/apps/api
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
+
 FROM build AS prod-deps
 RUN pnpm --filter api deploy --prod --legacy /out
 

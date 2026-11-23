@@ -24,7 +24,7 @@ interface CardSheetProps {
   onClose: () => void;
 }
 
-interface FormState {
+export interface CardFormState {
   text: string;
   imageUrl: string | null;
   audioUrl: string | null;
@@ -35,8 +35,8 @@ interface FormState {
   successMessage: string;
 }
 
-function initialState(card: Card | undefined): FormState {
-  const base: FormState = {
+function initialState(card: Card | undefined): CardFormState {
+  const base: CardFormState = {
     text: '',
     imageUrl: null,
     audioUrl: null,
@@ -62,7 +62,8 @@ function initialState(card: Card | undefined): FormState {
   }
 }
 
-function toInput(type: CardType, form: FormState): unknown {
+/** Builds the request for a card from the form; empty trivia answers are dropped. */
+export function toCardInput(type: CardType, form: CardFormState): unknown {
   switch (type) {
     case 'PHOTO_TEXT':
       return { type, payload: { text: form.text, imageUrl: form.imageUrl } };
@@ -124,9 +125,12 @@ function CardForm({
 }) {
   const t = useTranslations('creator');
   const [form, setForm] = useState(() => initialState(draft.card));
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+  // Uploads and recordings in progress; saving now would drop them from the card.
+  const [pending, setPending] = useState(0);
+  const onBusy = (busy: boolean) => setPending((count) => Math.max(0, count + (busy ? 1 : -1)));
+  const set = <K extends keyof CardFormState>(key: K, value: CardFormState[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
-  const parsed = CardInputSchema.safeParse(toInput(draft.type, form));
+  const parsed = CardInputSchema.safeParse(toCardInput(draft.type, form));
 
   async function save() {
     if (!parsed.success) return;
@@ -148,12 +152,14 @@ function CardForm({
               editor={editor}
               value={form.audioUrl}
               onChange={(url) => set('audioUrl', url)}
+              onBusy={onBusy}
             />
           )}
           <ImagePicker
             editor={editor}
             value={form.imageUrl}
             onChange={(url) => set('imageUrl', url)}
+            onBusy={onBusy}
           />
         </>
       )}
@@ -241,7 +247,7 @@ function CardForm({
         </>
       )}
 
-      <Button block busy={editor.saving} disabled={!parsed.success} onClick={save}>
+      <Button block busy={editor.saving} disabled={!parsed.success || pending > 0} onClick={save}>
         {t(draft.card ? 'saveCard' : 'addCard')}
       </Button>
     </div>

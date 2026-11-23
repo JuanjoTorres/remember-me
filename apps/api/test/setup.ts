@@ -15,3 +15,6 @@ process.env['STRIPE_SECRET_KEY'] = 'sk_test_integration';
 process.env['STRIPE_WEBHOOK_SECRET'] = 'whsec_integration_test_secret';
 process.env['STRIPE_PRICE_ID_PREMIUM'] = 'price_premium_test';
 process.env['STRIPE_PRICE_ID_CUSTOM_SLUG'] = 'price_custom_slug_test';
+// Tests hammer the API from one address; the limits get their own test file.
+process.env['RATE_LIMIT_PER_MINUTE'] = '1000000';
+process.env['GIFT_CREATION_LIMIT_PER_HOUR'] = '1000000';

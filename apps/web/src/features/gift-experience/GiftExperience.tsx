@@ -51,7 +51,11 @@ export function GiftExperience({ gift, labels }: { gift: PublicGift; labels: Exp
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'ArrowRight') dispatch({ type: 'next' });
-      if (event.key === 'ArrowLeft') dispatch({ type: 'previous' });
+      if (event.key === 'ArrowLeft') {
+        // Leaving the surprise re-wraps it, so its "after" controls must go too.
+        setRevealed(false);
+        dispatch({ type: 'previous' });
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -61,7 +65,10 @@ export function GiftExperience({ gift, labels }: { gift: PublicGift; labels: Exp
   const solved = step.kind === 'card' && state.solved.includes(step.card.id);
 
   return (
-    <main className="bg-night text-paper relative mx-auto flex h-dvh max-w-md flex-col overflow-hidden select-none">
+    <main
+      lang={gift.locale}
+      className="bg-night text-paper relative mx-auto flex h-dvh max-w-md flex-col overflow-hidden select-none"
+    >
       {/* Progress: one segment per step */}
       <div
         className="relative z-30 flex gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]"

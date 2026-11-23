@@ -73,6 +73,18 @@ describe('loadEnv', () => {
     ).toThrowError(/test-only/);
   });
 
+  it('has rate limit defaults that can be overridden', () => {
+    expect(loadEnv(valid)).toMatchObject({
+      RATE_LIMIT_PER_MINUTE: 240,
+      GIFT_CREATION_LIMIT_PER_HOUR: 30,
+      TRUST_PROXY_HOPS: 0,
+    });
+    expect(loadEnv({ ...valid, RATE_LIMIT_PER_MINUTE: '60' }).RATE_LIMIT_PER_MINUTE).toBe(60);
+    expect(() => loadEnv({ ...valid, GIFT_CREATION_LIMIT_PER_HOUR: '0' })).toThrowError(
+      /GIFT_CREATION_LIMIT_PER_HOUR/,
+    );
+  });
+
   it('rejects a short signing secret', () => {
     expect(() => loadEnv({ ...valid, GRANT_SIGNING_SECRET: 'short' })).toThrowError(
       /GRANT_SIGNING_SECRET/,

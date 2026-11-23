@@ -1,12 +1,18 @@
 'use client';
 
-import { CustomSlugSchema, SLUG_MAX_LENGTH, slugify } from '@remember-me/shared-types';
+import {
+  CustomSlugSchema,
+  SLUG_MAX_LENGTH,
+  SLUG_MIN_LENGTH,
+  slugify,
+} from '@remember-me/shared-types';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { TextInput } from '@/features/shared/ui/Field';
 import { getSlugAvailability } from './api';
 
-export type SlugState = 'empty' | 'invalid' | 'checking' | 'available' | 'taken';
+/** `unchecked`: the availability request failed; paying checks again. */
+export type SlugState = 'empty' | 'invalid' | 'checking' | 'available' | 'taken' | 'unchecked';
 
 interface CustomSlugFieldProps {
   /** Host shown in front of the slug, e.g. "remember.me". */
@@ -42,7 +48,7 @@ export function CustomSlugField({ host, value, onChange }: CustomSlugFieldProps)
       getSlugAvailability(candidate, controller.signal)
         .then((result) => update(result.available ? 'available' : 'taken'))
         .catch(() => {
-          // Aborted or offline: stay in "checking"; paying re-checks anyway.
+          if (!controller.signal.aborted) update('unchecked');
         });
     }, 350);
     return () => {
@@ -55,10 +61,11 @@ export function CustomSlugField({ host, value, onChange }: CustomSlugFieldProps)
 
   const message: Record<SlugState, string> = {
     empty: t('slugHint'),
-    invalid: t('slugInvalid'),
+    invalid: t('slugInvalid', { min: SLUG_MIN_LENGTH, max: SLUG_MAX_LENGTH }),
     checking: t('slugChecking'),
     available: t('slugAvailable'),
     taken: t('slugTaken'),
+    unchecked: t('slugUnchecked'),
   };
   const tone =
     state === 'available'
