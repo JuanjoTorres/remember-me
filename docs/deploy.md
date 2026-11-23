@@ -23,12 +23,29 @@ stack are verified, the workflow and the VPS steps are not.
 4. **VPS:** install Docker, create a folder (for example `/opt/remember-me`), copy `deploy/.env.example`
    there as `.env` and fill it in. `IMAGE_PREFIX` must be written in lowercase, whatever the casing of the
    GitHub owner or repository. Log in to GHCR if the images are private.
-5. **GitHub repository:**
-   - Variables: `NEXT_PUBLIC_API_URL` (`https://<api-domain>`), `DEPLOY_PATH` (the folder on the VPS).
-   - Secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
-     (`ssh-keyscan <host>`).
+5. **GitHub repository**, Settings → Environments: create `staging` and `production`. In each one:
+   - Variables: `NEXT_PUBLIC_API_URL` (`https://<api-domain>` of that environment) and `DEPLOY_PATH` (the
+     folder on its host).
+   - Secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (`ssh-keyscan <host>`).
+   - For `production`, add yourself as a required reviewer, so that a release waits for your approval.
+6. **Switch each environment on** when its host is ready, with a repository variable (Settings → Secrets
+   and variables → Actions → Variables): `STAGING_DEPLOY_ENABLED=true`, `PRODUCTION_DEPLOY_ENABLED=true`.
+   Until then the workflow runs and skips the deploy.
 
-For a staging host, set `NODE_ENV=staging` in its `.env`: it accepts Stripe test keys.
+## Environments
+
+|                                   | Staging                          | Production                          |
+| --------------------------------- | -------------------------------- | ----------------------------------- |
+| Deployed by                       | every push to `main`             | a version tag (`v1.2.3`)            |
+| Image tag                         | `main-<commit>`                  | the version tag                     |
+| `NODE_ENV` in the host `.env`     | `staging`                        | `production`                        |
+| Stripe keys                       | test mode                        | live mode                           |
+| Storage                           | its own R2 bucket                | its own R2 bucket                   |
+| `IMAGE_PREFIX` in the host `.env` | `ghcr.io/<owner>/<repo>/staging` | `ghcr.io/<owner>/<repo>/production` |
+
+Each environment has its own host folder, database, bucket, domains and Stripe webhook endpoint. Nothing
+is shared, so staging can be reset freely. The web image is built per environment because the API address
+is embedded in the browser bundle.
 
 The API must only be reachable through Caddy. The web app passes each visitor's address to the API in
 `X-Forwarded-For` so that rate limits apply per visitor; a client that could reach the API directly could
@@ -36,8 +53,10 @@ fake that header.
 
 ## Releasing
 
-Tag a commit on the default branch with a version (`v0.1.0`) and push the tag. The `Deploy` workflow builds
-multi-arch images, pushes them to GHCR, copies the compose file to the VPS and restarts the stack.
+Merging a pull request into `main` deploys to staging. To release to production, tag the commit on `main`
+that staging has been running with a version (`v0.1.0`) and push the tag. In both cases the `Deploy`
+workflow builds multi-arch images, pushes them to GHCR, copies the compose file to the host and restarts
+the stack.
 Migrations run in the `migrate` container before the API starts.
 
 After the first deploy, check `https://<api-domain>/health` and run

@@ -1,17 +1,63 @@
 name: Deploy
 
-# Pushing a version tag (v1.2.3) builds the images, publishes them to GHCR and updates the VPS.
+# Two environments, each with its own host, secrets and variables (GitHub → Settings → Environments):
+#   - staging:    every push to main
+#   - production: every version tag (v1.2.3)
+# An environment is only deployed once the repository variable STAGING_DEPLOY_ENABLED or
+# PRODUCTION_DEPLOY_ENABLED is set to "true", so that merging to main before a server exists does
+# not produce failing runs.
 on:
   push:
+    branches: [main]
     tags: ['v*']
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  # One deploy at a time per environment; a newer one waits instead of racing the older one.
+  group: deploy-${{ github.ref_type == 'tag' && 'production' || 'staging' }}
+  cancel-in-progress: false
+
 jobs:
-  images:
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.plan.outputs.environment }}
+      image_tag: ${{ steps.plan.outputs.image_tag }}
+      image_prefix: ${{ steps.plan.outputs.image_prefix }}
+      enabled: ${{ steps.plan.outputs.enabled }}
+    steps:
+      - name: Decide environment and image tag
+        id: plan
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          # Repository-level switches (environment variables are not readable from this job).
+          STAGING_ENABLED: ${{ vars.STAGING_DEPLOY_ENABLED }}
+          PRODUCTION_ENABLED: ${{ vars.PRODUCTION_DEPLOY_ENABLED }}
+        run: |
+          if [[ "$REF_TYPE" == "tag" ]]; then
+            # The tag ends up in image names and in a command on the server: plain versions only.
+            [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Tag must look like v1.2.3"; exit 1; }
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "image_tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "enabled=$PRODUCTION_ENABLED" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+            echo "image_tag=main-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "enabled=$STAGING_ENABLED" >> "$GITHUB_OUTPUT"
+          fi
+          # Registry paths must be lowercase.
+          echo "image_prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: plan
+    runs-on: ubuntu-latest
+    # Gives access to the environment's variables: the web bundle is built for one API address.
+    environment: ${{ needs.plan.outputs.environment }}
+    if: needs.plan.outputs.enabled == 'true'
     strategy:
       matrix:
         include:
@@ -20,15 +66,6 @@ jobs:
           - { name: web, dockerfile: apps/web/Dockerfile, target: runtime }
     steps:
       - uses: actions/checkout@v4
-      - name: Validate the tag and name the image
-        id: image
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          # The tag ends up in image names and in a command on the server: accept plain versions only.
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Tag must look like v1.2.3"; exit 1; }
-          # Registry paths must be lowercase.
-          echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -43,17 +80,18 @@ jobs:
           target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image.outputs.prefix }}/${{ matrix.name }}:${{ github.ref_name }}
-          # Inlined into the browser bundle of the web image; ignored by the others.
+          # The web image differs per environment (it embeds the API address), so the environment
+          # is part of the image name.
+          tags: ${{ needs.plan.outputs.image_prefix }}/${{ needs.plan.outputs.environment }}/${{ matrix.name }}:${{ needs.plan.outputs.image_tag }}
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          cache-from: type=gha,scope=${{ needs.plan.outputs.environment }}-${{ matrix.name }}
+          cache-to: type=gha,scope=${{ needs.plan.outputs.environment }}-${{ matrix.name }},mode=max
 
   deploy:
-    needs: images
+    needs: [plan, images]
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ needs.plan.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure SSH
@@ -69,9 +107,11 @@ jobs:
         env:
           TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
           DIR: ${{ vars.DEPLOY_PATH }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.plan.outputs.image_tag }}
         run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Tag must look like v1.2.3"; exit 1; }
+          # Checked again here: this value is interpolated into a command that runs on the server.
+          [[ "$TAG" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|main-[0-9a-f]{7})$ ]] || { echo "Unexpected image tag"; exit 1; }
+          [[ -n "$DIR" ]] || { echo "Set the DEPLOY_PATH variable of this environment"; exit 1; }
           chmod +x scripts/backup.sh
           scp -p deploy/compose.prod.yaml deploy/Caddyfile scripts/backup.sh "$TARGET:$DIR/"
           ssh "$TARGET" "cd '$DIR' \
