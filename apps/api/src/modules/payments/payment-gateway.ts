@@ -18,6 +18,8 @@ export interface CheckoutSession {
 export interface CheckoutSessionState {
   sessionId: string;
   paid: boolean;
+  /** The session can no longer be paid. */
+  expired: boolean;
   amountTotal: number | null;
   currency: string | null;
 }

@@ -21,7 +21,8 @@ stack are verified, the workflow and the VPS steps are not.
      `checkout.session.expired`; copy its signing secret.
    - Register the web domain for Apple Pay if Stripe asks for it.
 4. **VPS:** install Docker, create a folder (for example `/opt/remember-me`), copy `deploy/.env.example`
-   there as `.env` and fill it in. Log in to GHCR if the images are private.
+   there as `.env` and fill it in. `IMAGE_PREFIX` must be written in lowercase, whatever the casing of the
+   GitHub owner or repository. Log in to GHCR if the images are private.
 5. **GitHub repository:**
    - Variables: `NEXT_PUBLIC_API_URL` (`https://<api-domain>`), `DEPLOY_PATH` (the folder on the VPS).
    - Secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`

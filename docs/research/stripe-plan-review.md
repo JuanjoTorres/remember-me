@@ -18,6 +18,9 @@ This is the shape already built in `apps/api/src/modules/payments`.
 | Handle `checkout.session.async_payment_failed`                                                      | Not handled: the order stayed open and its dead session was handed out again for 23 hours      | The order is closed; the next checkout creates a new session                                                                               |
 | Do not rely on the webhook alone: also check the session when the customer lands on the return page | The return page only polled the gift, so a late or lost webhook left a paying customer waiting | `POST /payments/confirm` asks Stripe for the session and runs the same fulfilment; the return page calls it on arrival and every few polls |
 
+`POST /payments/confirm` asks Stripe at most once every 8 seconds per order, announces a recorded payment
+again if the gift was left behind, and closes an order whose session expired at Stripe.
+
 ## Not changed (decisions for the owner)
 
 - **Tax.** Digital goods sold to EU consumers carry VAT of the customer's country. Checkout can calculate it

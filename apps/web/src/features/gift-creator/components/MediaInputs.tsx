@@ -137,14 +137,15 @@ export function AudioInput({ editor, value, onChange, onBusy }: MediaInputProps)
   const { busy, error, setError, upload } = useUpload(editor, onBusy);
   const discarded = useRef(false);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Reset on (re)mount: in development React mounts, unmounts and mounts again.
+    discarded.current = false;
+    return () => {
       // Leaving the form while recording: release the microphone and throw the take away.
       discarded.current = true;
       if (recorder.current?.state === 'recording') recorder.current.stop();
-    },
-    [],
-  );
+    };
+  }, []);
 
   async function store(file: Blob, name: string) {
     if (file.size > MEDIA_LIMITS.audioMaxBytes) return setError(t('fileTooLarge'));

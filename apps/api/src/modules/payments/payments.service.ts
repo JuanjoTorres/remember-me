@@ -16,12 +16,17 @@ import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { type PaymentEvent, PaymentGateway } from './payment-gateway.js';
 
 const PRICES_TTL_MS = 10 * 60 * 1000;
+/** Minimum time between two checks of the same checkout session with Stripe. */
+export const SESSION_CHECK_INTERVAL_MS = 8_000;
+const SESSION_CHECK_MEMORY = 10_000;
 /** Stripe sessions live 24 hours; an open one is handed out again for a little less than that. */
 const SESSION_REUSE_MS = 23 * 60 * 60 * 1000;
 
 @Injectable()
 export class PaymentsService implements OnModuleInit {
   private readonly logger = new Logger('Payments');
+  /** When each open order was last checked with Stripe (in memory, per instance). */
+  private readonly lastSessionCheck = new Map<string, number>();
   private prices?: { value: PricesResponse; expiresAt: number };
 
   constructor(
@@ -190,11 +195,34 @@ export class PaymentsService implements OnModuleInit {
       where: { giftId: grant.giftId, status: { in: ['PAID', 'PENDING'] } },
       orderBy: { createdAt: 'desc' },
     });
-    if (orders.some((order) => order.status === 'PAID')) return { status: 'PAID' };
+    const paid = orders.find((order) => order.status === 'PAID');
+    if (paid) {
+      // Paid on our side but the caller's gift is not premium yet: the announcement may have been
+      // lost (a failure right after recording the payment). Announcing again is harmless, because
+      // applying a payment is idempotent per order.
+      if (grant.plan !== 'PREMIUM') await this.announce(paid);
+      return { status: 'PAID' };
+    }
     const open = orders.find((order) => order.stripeSessionId !== null);
     if (!open?.stripeSessionId) return { status: 'NONE' };
 
+    // One question to Stripe per order every few seconds, however often the page (or anyone
+    // holding a grant) asks: this endpoint must not be a way to exhaust the account's API limit.
+    const now = Date.now();
+    if ((this.lastSessionCheck.get(open.id) ?? 0) > now - SESSION_CHECK_INTERVAL_MS) {
+      return { status: 'PENDING' };
+    }
+    this.lastSessionCheck.set(open.id, now);
+    if (this.lastSessionCheck.size > SESSION_CHECK_MEMORY) this.lastSessionCheck.clear();
+
     const session = await this.gateway.getCheckoutSession(open.stripeSessionId);
+    if (session.expired) {
+      await this.prisma.paymentOrder.updateMany({
+        where: { id: open.id, status: 'PENDING' },
+        data: { status: 'EXPIRED' },
+      });
+      return { status: 'NONE' };
+    }
     if (!session.paid) return { status: 'PENDING' };
     await this.settle(open, session);
     return { status: 'PAID' };
@@ -228,6 +256,11 @@ export class PaymentsService implements OnModuleInit {
       where: { id: order.id },
       data: { ...paid, status: 'PAID' },
     });
+    await this.announce(order);
+  }
+
+  /** Tells the other modules that an order was paid. */
+  private async announce(order: PaymentOrder): Promise<void> {
     // What was bought comes from our own order, not from the provider's payload.
     await this.events.publish(PaymentSucceededEvent, {
       orderId: order.id,

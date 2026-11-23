@@ -9,7 +9,8 @@ import {
 } from '@remember-me/shared-types';
 import request from 'supertest';
 import Stripe from 'stripe';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SESSION_CHECK_INTERVAL_MS } from '../src/modules/payments/payments.service.js';
 import { STRIPE_CLIENT } from '../src/modules/payments/stripe-payment-gateway.js';
 import {
   PaymentSucceededEvent,
@@ -33,6 +34,7 @@ interface StripeCall {
 /** A stand-in for api.stripe.com that records what the real Stripe SDK sends. */
 /** Sessions the stand-in reports as paid when they are retrieved. */
 const paidSessions = new Set<string>();
+const expiredSessions = new Set<string>();
 
 function startFakeStripe(calls: StripeCall[]): Promise<Server> {
   const server = createServer((req, res) => {
@@ -64,6 +66,7 @@ function startFakeStripe(calls: StripeCall[]): Promise<Server> {
           id: retrieve[1],
           object: 'checkout.session',
           payment_status: paidSessions.has(retrieve[1]!) ? 'paid' : 'unpaid',
+          status: expiredSessions.has(retrieve[1]!) ? 'expired' : 'open',
           amount_total: 499,
           currency: 'eur',
         });
@@ -559,6 +562,13 @@ describe('payments', () => {
   });
 
   describe('confirmation from the return page', () => {
+    /** Moves the clock past the pause between two checks of the same session. */
+    const later = () => {
+      const now = Date.now();
+      vi.spyOn(Date, 'now').mockReturnValue(now + SESSION_CHECK_INTERVAL_MS + 1);
+    };
+    afterEach(() => vi.restoreAllMocks());
+
     const confirm = (grant?: string) => {
       const call = http().post('/payments/confirm');
       return grant ? call.set('Authorization', `Bearer ${grant}`) : call;
@@ -573,6 +583,12 @@ describe('payments', () => {
       expect((await client.get()).body).toMatchObject({ plan: 'FREE' });
 
       paidSessions.add(sessionId);
+      // Asked again straight away: answered without a second call to Stripe.
+      stripeCalls.length = 0;
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PENDING' });
+      expect(stripeCalls).toEqual([]);
+
+      later();
       expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PAID' });
       expect(published).toEqual([{ orderId, giftId: gift.id, customSlug: null }]);
       expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED' });
@@ -583,6 +599,37 @@ describe('payments', () => {
         amountTotal: 499,
         currency: 'eur',
       });
+    });
+
+    it('announces a recorded payment again when the gift was left behind', async () => {
+      const { gift, client } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      paidSessions.add(sessionId);
+
+      // The first attempt records the payment, then the upgrade fails (the database hiccups).
+      let fail = true;
+      app.get(EventBus).subscribe(PaymentSucceededEvent, 'flaky-confirm', async (event) => {
+        if (event.orderId === orderId && fail) throw new Error('database is down');
+      });
+      await confirm(gift.grant).expect(500);
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } })).status,
+      ).toBe('PAID');
+
+      // The page asks again: the customer must not be stuck on a paid but locked gift.
+      fail = false;
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PAID' });
+      expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED' });
+    });
+
+    it('closes an order whose session expired at Stripe', async () => {
+      const { gift } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      expiredSessions.add(sessionId);
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'NONE' });
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } })).status,
+      ).toBe('EXPIRED');
     });
 
     it('does not fulfil twice when the webhook also arrives, in either order', async () => {

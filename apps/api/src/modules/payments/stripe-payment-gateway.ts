@@ -61,6 +61,7 @@ export class StripePaymentGateway extends PaymentGateway {
     return {
       sessionId: session.id,
       paid: session.payment_status === 'paid',
+      expired: session.status === 'expired',
       amountTotal: session.amount_total ?? null,
       currency: session.currency ?? null,
     };
