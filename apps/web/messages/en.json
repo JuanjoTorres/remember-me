@@ -124,7 +124,7 @@
     "copied": "Copied",
     "downloadPng": "Download QR",
     "downloadSvg": "SVG",
-    "watermarkNote": "Free gifts end with “Created with remember.me”.",
+    "watermarkNote": "Free gifts end with “Created with {brand}”.",
     "editLinkTitle": "Keep your edit link",
     "editLinkText": "There is no account. This private link is the only way to edit the gift from another device, so save it somewhere safe and do not share it.",
     "copyEditLink": "Copy edit link",
@@ -142,7 +142,7 @@
       "REVEAL_TEMPLATE": "The scratch card, the boarding pass and the gift box are part of the full experience.",
       "QR_FORMAT": "The print-quality QR code is part of the full experience.",
       "CUSTOM_SLUG": "A custom link comes with the full experience.",
-      "WATERMARK": "Upgrade this gift to remove “Created with remember.me” from the end."
+      "WATERMARK": "Upgrade this gift to remove “Created with {brand}” from the end."
     },
     "featureCards": "Unlimited cards",
     "featureVoice": "Voice notes in your own voice",
@@ -195,7 +195,7 @@
     "triviaRight": "That's it!",
     "continue": "Continue",
     "replay": "Watch again",
-    "watermark": "Created with remember.me",
+    "watermark": "Created with {brand}",
     "revealBasic": "Tap to open",
     "revealScratch": "Scratch here",
     "revealTicket": "Tear off to see where",
@@ -205,12 +205,12 @@
     "ticketPassenger": "Passenger",
     "notFoundTitle": "This gift isn't here",
     "notFoundText": "The link may be mistyped, or the gift is not published yet. Ask the person who sent it to you.",
-    "notFoundHome": "What is remember.me?"
+    "notFoundHome": "What is {brand}?"
   },
   "privacy": {
     "title": "Privacy",
     "updated": "Last updated: 23 November 2026",
-    "intro": "remember.me lets you build a gift that someone opens from a QR code. This page explains what we store to make that work.",
+    "intro": "{brand} lets you build a gift that someone opens from a QR code. This page explains what we store to make that work.",
     "s1Title": "What we store",
     "s1Text": "The content you add to a gift: names, texts, photos, voice notes, the trivia question and the surprise. Photos are converted and stripped of their metadata (including location) before they are stored. We do not create accounts and we do not ask for your email.",
     "s2Title": "Payments",
@@ -223,6 +223,6 @@
     "s5Text": "We do not use advertising or analytics cookies. Your browser stores your language preference and the edit links of your gifts.",
     "s6Title": "Contact",
     "s6Text": "For any question about your data, write to the address shown on the legal notice of this site.",
-    "back": "Back to remember.me"
+    "back": "Back to {brand}"
   }
 }

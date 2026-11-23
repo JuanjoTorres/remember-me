@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { CustomSlugField, type SlugState } from '@/features/checkout/CustomSlugField';
 import type { UpgradeReason } from '@/features/checkout/upgrade-triggers';
 import { isApiError } from '@/features/shared/api/client';
+import { BRAND_NAME } from '@/features/shared/brand';
 import { displayUrl } from '@/features/shared/format';
 import { Button } from '@/features/shared/ui/Button';
 import { downloadQr } from '../api';
@@ -126,7 +127,9 @@ export function SharePanel({
             </Button>
           </div>
           {gift.capabilities.watermark && (
-            <p className="text-ink-soft mt-3 text-sm">{t('watermarkNote')}</p>
+            <p className="text-ink-soft mt-3 text-sm">
+              {t('watermarkNote', { brand: BRAND_NAME })}
+            </p>
           )}
         </div>
       )}

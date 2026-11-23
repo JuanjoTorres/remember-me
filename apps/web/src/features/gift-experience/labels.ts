@@ -1,5 +1,6 @@
 import type { PublicGift } from '@remember-me/shared-types';
 import { getTranslations } from 'next-intl/server';
+import { BRAND_NAME } from '@/features/shared/brand';
 import type { ExperienceLabels } from './GiftExperience';
 
 /** Resolves every text of the experience on the server, in the language the gift was written in. */
@@ -20,7 +21,7 @@ export async function experienceLabels(gift: PublicGift): Promise<ExperienceLabe
     triviaRight: t('triviaRight'),
     continue: t('continue'),
     replay: t('replay'),
-    watermark: t('watermark'),
+    watermark: t('watermark', { brand: BRAND_NAME }),
     reveal: {
       BASIC: t('revealBasic'),
       SCRATCH_CARD: t('revealScratch'),

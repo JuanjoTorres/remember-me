@@ -18,8 +18,8 @@ describe('edit token storage', () => {
   });
 
   it('round-trips the token through the private edit link', () => {
-    const link = editLink('https://remember.me', 'g1', 'secret_token-123');
-    expect(link).toBe('https://remember.me/create/g1#token=secret_token-123');
+    const link = editLink('https://kardoo.me', 'g1', 'secret_token-123');
+    expect(link).toBe('https://kardoo.me/create/g1#token=secret_token-123');
     expect(tokenFromHash(new URL(link).hash)).toBe('secret_token-123');
     expect(tokenFromHash('')).toBeUndefined();
     expect(tokenFromHash('#other=1')).toBeUndefined();

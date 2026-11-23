@@ -15,7 +15,7 @@ import { getSlugAvailability } from './api';
 export type SlugState = 'empty' | 'invalid' | 'checking' | 'available' | 'taken' | 'unchecked';
 
 interface CustomSlugFieldProps {
-  /** Host shown in front of the slug, e.g. "remember.me". */
+  /** Host shown in front of the slug, e.g. "kardoo.me". */
   host: string;
   value: string;
   onChange: (slug: string, state: SlugState) => void;

@@ -1,9 +1,9 @@
 ---
 name: remember-me
-description: How to change remember.me (NestJS API, Next.js web, shared Zod contracts). Load before adding or changing an endpoint, a module, an event, a contract or a feature in this repo.
+description: How to change kardoo.me (NestJS API, Next.js web, shared Zod contracts). Load before adding or changing an endpoint, a module, an event, a contract or a feature in this repo.
 ---
 
-# remember.me
+# kardoo.me
 
 Read `CLAUDE.md` first: its architecture rules win over anything here. Each kind of change below points at
 a real file to copy the shape from. Do not paste code from this skill; open the model file.

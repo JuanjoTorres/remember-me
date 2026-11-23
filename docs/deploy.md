@@ -1,4 +1,4 @@
-# Deploying remember.me
+# Deploying kardoo.me
 
 Target: one VPS with Docker Compose. Caddy terminates TLS for two domains (web and API), PostgreSQL runs
 on the host, media lives in Cloudflare R2. The images are independent, so `web` and `api` can later run as

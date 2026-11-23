@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { PremiumUpgradeSheet } from '@/features/checkout/PremiumUpgradeSheet';
 import { isApiError } from '@/features/shared/api/client';
 import { Button } from '@/features/shared/ui/Button';
+import { BrandMark } from '@/features/shared/ui/BrandMark';
 import { Field } from '@/features/shared/ui/Field';
 import { dropHeldToken, forgetGift, hasStoredToken, saveGift } from '../storage';
 import { useGiftEditor } from '../useGiftEditor';
@@ -110,7 +111,7 @@ export function GiftEditor({ giftId, editToken }: { giftId: string; editToken: s
     <div className="space-y-8 pb-32">
       <header className="flex items-center justify-between">
         <Link href="/" className="font-display text-xl tracking-tight">
-          remember<span className="text-ember">.me</span>
+          <BrandMark />
         </Link>
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold ${free ? 'bg-paper-deep text-ink-soft' : 'bg-gold/30 text-ink'}`}

@@ -30,7 +30,7 @@ export function giftView(overrides: Partial<GiftEditorView> = {}): GiftEditorVie
     reveal: { template: 'BASIC', headline: 'Lisbon!', message: '', detail: '', imageUrl: null },
     cards: [],
     customSlugPending: false,
-    publicUrl: 'https://remember.me/for/gift-x9k2bd',
+    publicUrl: 'https://kardoo.me/for/gift-x9k2bd',
     grant: 'grant-token',
     grantExpiresAt: '2030-01-01T00:00:00.000Z',
     ...overrides,

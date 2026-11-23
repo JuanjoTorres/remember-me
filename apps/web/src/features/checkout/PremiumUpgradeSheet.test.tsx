@@ -56,7 +56,7 @@ describe('PremiumUpgradeSheet', () => {
     ['MAX_CARDS', /up to 3 cards/],
     ['CARD_TYPE', /Voice notes and trivia/],
     ['REVEAL_TEMPLATE', /scratch card, the boarding pass and the gift box/],
-    ['WATERMARK', /remove “Created with remember.me”/],
+    ['WATERMARK', /remove “Created with kardoo.me”/],
   ] as const)('explains why it opened: %s', async (reason, text) => {
     open(reason);
     expect(screen.getByRole('dialog', { name: 'The full experience' })).toBeInTheDocument();
@@ -101,7 +101,7 @@ describe('PremiumUpgradeSheet', () => {
     await userEvent.type(input, 'Te quiero, Ana');
 
     expect(input).toHaveValue('te-quiero-ana');
-    expect(screen.getByTestId('slug-preview')).toHaveTextContent('remember.me/for/te-quiero-ana');
+    expect(screen.getByTestId('slug-preview')).toHaveTextContent('kardoo.me/for/te-quiero-ana');
     expect(await screen.findByText('Available')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Pay €6.98' }));

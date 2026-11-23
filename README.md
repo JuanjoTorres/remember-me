@@ -1,7 +1,10 @@
-# remember.me
+# kardoo.me
 
 Interactive digital gifts behind a QR code. The creator builds a story of photos, messages, voice notes
 and an optional trivia question; the recipient scans the code, swipes through it and reveals the surprise.
+
+The public brand is kardoo.me; it is written once, in `apps/web/src/features/shared/brand.ts`. The
+repository and the package scope (`@remember-me/*`) keep the project's first name.
 
 ## Layout
 

@@ -3,8 +3,8 @@ import { parseClientEnv, parseServerEnv } from './env';
 
 describe('web env', () => {
   it('accepts valid urls and strips the trailing slash', () => {
-    expect(parseClientEnv({ NEXT_PUBLIC_API_URL: 'https://api.remember.me/' })).toEqual({
-      NEXT_PUBLIC_API_URL: 'https://api.remember.me',
+    expect(parseClientEnv({ NEXT_PUBLIC_API_URL: 'https://api.kardoo.me/' })).toEqual({
+      NEXT_PUBLIC_API_URL: 'https://api.kardoo.me',
     });
     expect(parseServerEnv({ INTERNAL_API_URL: 'http://api:4000' }).INTERNAL_API_URL).toBe(
       'http://api:4000',
