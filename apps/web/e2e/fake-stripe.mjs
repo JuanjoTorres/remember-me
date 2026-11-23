@@ -21,6 +21,25 @@ const server = createServer((req, res) => {
     // Test hook: the sessions created so far, newest last.
     if (req.method === 'GET' && path === '/__sessions') return json(200, sessions);
 
+    const retrieve = /^\/v1\/checkout\/sessions\/(cs_test_\w+)$/.exec(path);
+    if (req.method === 'GET' && retrieve) {
+      const session = sessions.find((candidate) => candidate.id === retrieve[1]);
+      return json(200, {
+        id: retrieve[1],
+        object: 'checkout.session',
+        payment_status: session?.paid ? 'paid' : 'unpaid',
+        amount_total: 499,
+        currency: 'eur',
+      });
+    }
+    // Test hook: the customer "pays" this session, without any webhook being sent.
+    const pay = /^\/__sessions\/(cs_test_\w+)\/pay$/.exec(path);
+    if (req.method === 'POST' && pay) {
+      const session = sessions.find((candidate) => candidate.id === pay[1]);
+      if (session) session.paid = true;
+      return json(session ? 200 : 404, { paid: Boolean(session) });
+    }
+
     const price = /^\/v1\/prices\/(\w+)$/.exec(path);
     if (req.method === 'GET' && price && PRICES[price[1]] !== undefined) {
       return json(200, {

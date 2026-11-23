@@ -2,8 +2,10 @@ import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type {
   CheckoutSessionRequest,
   CheckoutSessionResponse,
+  PaymentConfirmation,
   PricesResponse,
 } from '@remember-me/shared-types';
+import type { PaymentOrder } from '../../generated/prisma/client.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { GiftGrantClaims } from '../../shared/auth/gift-grant.service.js';
@@ -175,14 +177,42 @@ export class PaymentsService implements OnModuleInit {
       return;
     }
 
+    await this.settle(order, event);
+  }
+
+  /**
+   * Asks Stripe whether the open checkout of the grant's gift has been paid, and fulfils it if so.
+   * The return page calls this, so that a late or lost webhook does not leave a paying customer
+   * waiting. It runs the same steps as the webhook; doing both is harmless.
+   */
+  async confirm(grant: GiftGrantClaims): Promise<PaymentConfirmation> {
+    const orders = await this.prisma.paymentOrder.findMany({
+      where: { giftId: grant.giftId, status: { in: ['PAID', 'PENDING'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (orders.some((order) => order.status === 'PAID')) return { status: 'PAID' };
+    const open = orders.find((order) => order.stripeSessionId !== null);
+    if (!open?.stripeSessionId) return { status: 'NONE' };
+
+    const session = await this.gateway.getCheckoutSession(open.stripeSessionId);
+    if (!session.paid) return { status: 'PENDING' };
+    await this.settle(open, session);
+    return { status: 'PAID' };
+  }
+
+  /** Records a confirmed payment and announces it. Safe to run more than once for an order. */
+  private async settle(
+    order: PaymentOrder,
+    payment: { sessionId: string; amountTotal: number | null; currency: string | null },
+  ): Promise<void> {
     const alreadyPaid = await this.prisma.paymentOrder.findFirst({
       where: { giftId: order.giftId, status: 'PAID', NOT: { id: order.id } },
     });
     const paid = {
       paidAt: order.paidAt ?? new Date(),
-      stripeSessionId: event.sessionId,
-      amountTotal: event.amountTotal,
-      currency: event.currency,
+      stripeSessionId: payment.sessionId,
+      amountTotal: payment.amountTotal,
+      currency: payment.currency,
     };
     if (alreadyPaid || order.status === 'REFUND_DUE') {
       // A second payment for the same gift got through (a session opened before the first payment).
@@ -198,7 +228,7 @@ export class PaymentsService implements OnModuleInit {
       where: { id: order.id },
       data: { ...paid, status: 'PAID' },
     });
-    // What was bought comes from our own order, not from the webhook payload.
+    // What was bought comes from our own order, not from the provider's payload.
     await this.events.publish(PaymentSucceededEvent, {
       orderId: order.id,
       giftId: order.giftId,

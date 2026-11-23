@@ -36,3 +36,9 @@ export type Price = z.infer<typeof PriceSchema>;
 /** Current prices, read from Stripe. The UI never hard-codes an amount. */
 export const PricesResponseSchema = z.object({ premium: PriceSchema, customSlug: PriceSchema });
 export type PricesResponse = z.infer<typeof PricesResponseSchema>;
+
+/** Result of asking Stripe directly whether the open checkout of a gift has been paid. */
+export const PaymentConfirmationSchema = z.object({
+  status: z.enum(['PAID', 'PENDING', 'NONE']),
+});
+export type PaymentConfirmation = z.infer<typeof PaymentConfirmationSchema>;

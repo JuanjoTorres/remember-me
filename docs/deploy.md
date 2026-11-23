@@ -17,7 +17,8 @@ stack are verified, the workflow and the VPS steps are not.
    - Enable the payment methods you want in Settings → Payment methods: cards, Apple Pay, Google Pay.
      Bizum needs approval from Stripe first.
    - Add a webhook endpoint `https://<api-domain>/payments/webhook` for `checkout.session.completed`,
-     `checkout.session.async_payment_succeeded` and `checkout.session.expired`; copy its signing secret.
+     `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` and
+     `checkout.session.expired`; copy its signing secret.
    - Register the web domain for Apple Pay if Stripe asks for it.
 4. **VPS:** install Docker, create a folder (for example `/opt/remember-me`), copy `deploy/.env.example`
    there as `.env` and fill it in. Log in to GHCR if the images are private.

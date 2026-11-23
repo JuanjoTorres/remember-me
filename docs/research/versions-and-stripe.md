@@ -57,6 +57,7 @@ Findings:
   0.50–5,000.00 EUR, B2C. Access type is "Approval required" (early-access onboarding). It cannot be forced
   from code on the current API version: it appears once the account is approved and the method is enabled in
   the Dashboard.
+- **Update 2026-11-23:** Checkout does have native optional items; see `stripe-plan-review.md`.
 - **Order bump:** the upsell docs only cover subscription upsells (Dashboard-configured). Nothing was verified
   for one-time optional items inside hosted Checkout, so the order bump is implemented in our own
   `PremiumUpgradeSheet` (checkbox before redirect) and sent as a second `line_item`.

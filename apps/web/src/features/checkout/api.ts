@@ -1,6 +1,7 @@
 import type {
   CheckoutSessionRequest,
   CheckoutSessionResponse,
+  PaymentConfirmation,
   PricesResponse,
   SlugAvailability,
 } from '@remember-me/shared-types';
@@ -19,4 +20,9 @@ export function createCheckoutSession(
   request: CheckoutSessionRequest,
 ): Promise<CheckoutSessionResponse> {
   return apiJson('/payments/checkout-session', { method: 'POST', body: request, grant });
+}
+
+/** Asks the API to check with Stripe whether this gift's checkout was paid, and to fulfil it. */
+export function confirmPayment(grant: string): Promise<PaymentConfirmation> {
+  return apiJson('/payments/confirm', { method: 'POST', grant });
 }

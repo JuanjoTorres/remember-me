@@ -13,6 +13,7 @@ import {
   type CheckoutSessionRequest,
   CheckoutSessionRequestSchema,
   type CheckoutSessionResponse,
+  type PaymentConfirmation,
   type PricesResponse,
 } from '@remember-me/shared-types';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -38,6 +39,14 @@ export class PaymentsController {
     @Body(new ZodPipe(CheckoutSessionRequestSchema)) body: CheckoutSessionRequest,
   ): Promise<CheckoutSessionResponse> {
     return this.payments.createCheckoutSession(grant, body);
+  }
+
+  /** Called by the return page: checks with Stripe whether the gift's checkout was paid. */
+  @Post('confirm')
+  @HttpCode(200)
+  @UseGuards(GiftGrantGuard)
+  confirm(@Grant() grant: GiftGrantClaims): Promise<PaymentConfirmation> {
+    return this.payments.confirm(grant);
   }
 
   /** Called by Stripe. Authenticated by the signature over the raw body, so never rate limited. */

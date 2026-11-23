@@ -152,3 +152,28 @@ test('a creator upgrades with a custom link, and the recipient scratches the sur
   await expect(laptop.getByText('Weekend in Porto!')).toBeVisible();
   await desktop.close();
 });
+
+test('a payment is confirmed on the return page even if the webhook never arrives', async ({
+  page,
+}) => {
+  await startGift(page, 'Lucia');
+  await addTextCard(page, 'For you');
+  await fillSurprise(page, 'Dinner on Saturday');
+  await page.getByRole('button', { name: 'Publish without watermark' }).click();
+  const upgrade = page.getByRole('dialog', { name: 'The full experience' });
+
+  // The customer pays at "Stripe" before being sent back; no webhook is delivered at all.
+  const sessionCreated = page.waitForResponse((response) =>
+    response.url().endsWith('/payments/checkout-session'),
+  );
+  await page.route('**/create/*/success', async (route) => {
+    const session = await lastCheckoutSession();
+    await fetch(`http://127.0.0.1:4242/__sessions/${session.id}/pay`, { method: 'POST' });
+    await route.continue();
+  });
+  await upgrade.getByRole('button', { name: 'Pay €4.99' }).click();
+  await sessionCreated;
+
+  await expect(page.getByRole('heading', { name: 'Your gift has everything' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'QR code of your gift' })).toBeVisible();
+});

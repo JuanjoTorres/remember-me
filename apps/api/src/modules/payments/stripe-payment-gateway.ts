@@ -7,6 +7,7 @@ import { AppError } from '../../shared/http/app-error.js';
 import {
   type CheckoutSession,
   type CheckoutSessionParams,
+  type CheckoutSessionState,
   type PaymentEvent,
   PaymentGateway,
 } from './payment-gateway.js';
@@ -55,6 +56,16 @@ export class StripePaymentGateway extends PaymentGateway {
     }
   }
 
+  async getCheckoutSession(sessionId: string): Promise<CheckoutSessionState> {
+    const session = await this.stripe.checkout.sessions.retrieve(sessionId);
+    return {
+      sessionId: session.id,
+      paid: session.payment_status === 'paid',
+      amountTotal: session.amount_total ?? null,
+      currency: session.currency ?? null,
+    };
+  }
+
   async getPrice(priceId: string): Promise<Price> {
     const price = await this.stripe.prices.retrieve(priceId);
     if (price.unit_amount === null)
@@ -84,6 +95,8 @@ export class StripePaymentGateway extends PaymentGateway {
         if (session.payment_status !== 'paid') return { ...base, kind: 'ignored' };
         return { ...base, kind: 'paid', ...sessionFacts(session) };
       }
+      // A delayed payment that failed leaves the session as unusable as an expired one.
+      case 'checkout.session.async_payment_failed':
       case 'checkout.session.expired':
         return { ...base, kind: 'expired', ...sessionFacts(event.data.object) };
       default:

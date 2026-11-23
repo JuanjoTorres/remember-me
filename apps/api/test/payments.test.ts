@@ -31,6 +31,9 @@ interface StripeCall {
 }
 
 /** A stand-in for api.stripe.com that records what the real Stripe SDK sends. */
+/** Sessions the stand-in reports as paid when they are retrieved. */
+const paidSessions = new Set<string>();
+
 function startFakeStripe(calls: StripeCall[]): Promise<Server> {
   const server = createServer((req, res) => {
     let body = '';
@@ -53,6 +56,16 @@ function startFakeStripe(calls: StripeCall[]): Promise<Server> {
           id,
           object: 'checkout.session',
           url: `https://checkout.stripe.test/c/pay/${id}`,
+        });
+      }
+      const retrieve = /^\/v1\/checkout\/sessions\/(cs_test_\w+)$/.exec(path);
+      if (req.method === 'GET' && retrieve) {
+        return json({
+          id: retrieve[1],
+          object: 'checkout.session',
+          payment_status: paidSessions.has(retrieve[1]!) ? 'paid' : 'unpaid',
+          amount_total: 499,
+          currency: 'eur',
         });
       }
       const expire = /^\/v1\/checkout\/sessions\/(cs_test_\w+)\/expire$/.exec(path);
@@ -542,6 +555,82 @@ describe('payments', () => {
       ).expect(200);
       await deliver(paidEvent(randomUUID(), 'cs_test_unknown')).expect(200);
       expect(published).toEqual([]);
+    });
+  });
+
+  describe('confirmation from the return page', () => {
+    const confirm = (grant?: string) => {
+      const call = http().post('/payments/confirm');
+      return grant ? call.set('Authorization', `Bearer ${grant}`) : call;
+    };
+
+    it('fulfils a paid checkout even if the webhook never arrives', async () => {
+      const { gift, client } = await readyGift();
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'NONE' });
+
+      const { orderId, sessionId } = await startCheckout(gift);
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PENDING' });
+      expect((await client.get()).body).toMatchObject({ plan: 'FREE' });
+
+      paidSessions.add(sessionId);
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PAID' });
+      expect(published).toEqual([{ orderId, giftId: gift.id, customSlug: null }]);
+      expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED' });
+      expect(
+        await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } }),
+      ).toMatchObject({
+        status: 'PAID',
+        amountTotal: 499,
+        currency: 'eur',
+      });
+    });
+
+    it('does not fulfil twice when the webhook also arrives, in either order', async () => {
+      const { gift } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      paidSessions.add(sessionId);
+
+      await confirm(gift.grant).expect(200);
+      await deliver(paidEvent(orderId, sessionId)).expect(200);
+      stripeCalls.length = 0;
+      expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PAID' });
+      // Already paid: answered from our own records, without asking Stripe again.
+      expect(stripeCalls).toEqual([]);
+      expect(
+        await prisma().paymentOrder.count({ where: { giftId: gift.id, status: 'PAID' } }),
+      ).toBe(1);
+      expect(
+        await prisma().paymentOrder.count({ where: { giftId: gift.id, status: 'REFUND_DUE' } }),
+      ).toBe(0);
+    });
+
+    it('needs the grant of the gift', async () => {
+      await confirm().expect(401);
+    });
+  });
+
+  describe('delayed payment methods that fail', () => {
+    it('closes the order so that the creator can start a new checkout', async () => {
+      const { gift, client } = await readyGift();
+      const first = await startCheckout(gift);
+      const session = { id: first.sessionId, metadata: { orderId: first.orderId } };
+      await deliver(
+        sessionEvent('checkout.session.completed', { ...session, payment_status: 'unpaid' }),
+      ).expect(200);
+      await deliver(
+        sessionEvent('checkout.session.async_payment_failed', {
+          ...session,
+          payment_status: 'unpaid',
+        }),
+      ).expect(200);
+
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: first.orderId } })).status,
+      ).toBe('EXPIRED');
+      expect((await client.get()).body).toMatchObject({ plan: 'FREE' });
+      // The dead session is not handed out again.
+      const second = await startCheckout(gift);
+      expect(second.sessionId).not.toBe(first.sessionId);
     });
   });
 
