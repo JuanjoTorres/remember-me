@@ -21,11 +21,22 @@
   - Sheets move focus in, keep it inside and give it back.
   - Plan limits in upgrade texts come from `PLAN_CAPABILITIES`; a failed availability check no longer
     blocks payment.
+- Fixes from the review of this phase:
+  - The web server passes each visitor's address to the API, so recipients are rate limited one by one
+    instead of sharing one budget that a single client could exhaust for everybody.
+  - The gift-creation limit cannot be bypassed with `/gifts/` or `/GIFTS`.
+  - The deploy workflow only accepts tags like `v1.2.3` (the tag reaches a shell on the server) and
+    lowercases the image path; the scripts are committed as executable.
+  - Staging can run with `NODE_ENV=staging` and Stripe test keys; the database password format is documented.
+  - Opening an edit link no longer re-enters itself, and a refused link falls back to the stored token
+    without a reload.
+  - Only the top sheet reacts to Tab and Escape, so the upgrade sheet no longer closes the card form
+    underneath; the microphone is released if the form closes during the permission prompt.
 - Final check, run for real:
   - `docker compose --profile app up --build`: all services healthy, `/health` 200.
   - `scripts/smoke.sh` against that stack: create → publish → server-rendered gift page → delete → 404.
   - `pnpm test:e2e`: free and paid flows in a mobile browser against the built apps.
-- Totals: 101 API tests, 77 web tests, 11 contract tests, 2 end-to-end flows.
+- Totals: 101 API tests, 80 web tests, 11 contract tests, 2 end-to-end flows.
 
 ## What changed from the plan (and why)
 
@@ -40,6 +51,7 @@
   executed: they need the VPS and the accounts.
 - No real payment was made: Stripe is replaced by a local stand-in in tests.
 - Rate limit counters are per API instance (in memory).
+- The `migrate` image runs as root (it is a short-lived job with no open port).
 - The privacy page is a plain-language notice without the legal identity of the operator; it needs a legal
   notice with your company details before going live.
 - Local Node is 24.14; some tools ask for 24.15+ (warnings only). CI and the images use current Node 24.

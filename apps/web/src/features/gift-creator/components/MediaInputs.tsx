@@ -156,6 +156,11 @@ export function AudioInput({ editor, value, onChange, onBusy }: MediaInputProps)
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (discarded.current) {
+        // The form was closed while the permission prompt was open.
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const chunks: Blob[] = [];
       const active = new MediaRecorder(stream, { mimeType: RECORDING_TYPE });
       const limit = setTimeout(() => active.stop(), MAX_RECORDING_MS);

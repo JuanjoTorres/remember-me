@@ -44,7 +44,7 @@ services:
     image: ${IMAGE_PREFIX}/api:${IMAGE_TAG}
     restart: unless-stopped
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 4000
       DATABASE_URL: postgresql://remember:${POSTGRES_PASSWORD}@postgres:5432/remember_me
       WEB_ORIGIN: https://${WEB_DOMAIN}

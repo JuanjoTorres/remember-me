@@ -24,6 +24,10 @@ describe('rate limits', () => {
       statuses.push((await request(app.getHttpServer()).post('/gifts').send({})).status);
     }
     expect(statuses).toEqual([201, 201, 201, 429, 429]);
+    // Spelling the path differently does not get around the limit.
+    for (const path of ['/gifts/', '/GIFTS', '/Gifts/']) {
+      expect((await request(app.getHttpServer()).post(path).send({})).status, path).toBe(429);
+    }
 
     const refused = await request(app.getHttpServer()).post('/gifts').send({});
     expect(refused.body.code).toBe('RATE_LIMITED');

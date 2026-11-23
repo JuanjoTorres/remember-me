@@ -26,6 +26,12 @@ stack are verified, the workflow and the VPS steps are not.
    - Secrets: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`
      (`ssh-keyscan <host>`).
 
+For a staging host, set `NODE_ENV=staging` in its `.env`: it accepts Stripe test keys.
+
+The API must only be reachable through Caddy. The web app passes each visitor's address to the API in
+`X-Forwarded-For` so that rate limits apply per visitor; a client that could reach the API directly could
+fake that header.
+
 ## Releasing
 
 Tag a commit on the default branch with a version (`v0.1.0`) and push the tag. The `Deploy` workflow builds
@@ -37,7 +43,7 @@ After the first deploy, check `https://<api-domain>/health` and run
 
 ## Backups
 
-`backup.sh` is copied to the VPS on each deploy. Schedule it with cron; it keeps 14 days of dumps by
+`backup.sh` is copied to the VPS on each deploy. Schedule it with cron (`bash backup.sh`); it keeps 14 days of dumps by
 default. Copy the dumps off the host. Media is in R2 and is not included.
 
 ## Operations

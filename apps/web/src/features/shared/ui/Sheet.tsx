@@ -5,6 +5,9 @@ import { type ReactNode, useEffect, useId, useRef } from 'react';
 
 const FOCUSABLE = 'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])';
 
+/** Open sheets, bottom to top. Only the top one reacts to the keyboard. */
+const openSheets: symbol[] = [];
+
 interface SheetProps {
   open: boolean;
   onClose: () => void;
@@ -17,14 +20,22 @@ interface SheetProps {
 export function Sheet({ open, onClose, title, closeLabel, children }: SheetProps) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  // Kept in a ref so that a new `onClose` function on every render does not restart the effect.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
+    const self = Symbol('sheet');
+    openSheets.push(self);
     const opener = document.activeElement as HTMLElement | null;
     // Move focus into the dialog, keep Tab inside it, and give focus back on close.
     const focusPanel = requestAnimationFrame(() => panel.current?.focus());
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') return onClose();
+      if (openSheets.at(-1) !== self) return;
+      if (event.key === 'Escape') return close.current();
       if (event.key !== 'Tab' || !panel.current) return;
       const focusable = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
         (element) => !element.hasAttribute('disabled'),
@@ -46,12 +57,13 @@ export function Sheet({ open, onClose, title, closeLabel, children }: SheetProps
     const { overflow } = document.body.style;
     document.body.style.overflow = 'hidden';
     return () => {
+      openSheets.splice(openSheets.indexOf(self), 1);
       cancelAnimationFrame(focusPanel);
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
       opener?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>

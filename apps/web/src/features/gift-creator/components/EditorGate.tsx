@@ -10,8 +10,9 @@ function readToken(giftId: string): string | null {
   if (fromLink) {
     // Opened through the private edit link: use it for now and take the secret out of the address
     // bar. It is stored once the API accepts it (see GiftEditor).
-    holdEditToken(giftId, fromLink);
+    // The address is cleaned first: holding the token notifies React, which reads this again.
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    holdEditToken(giftId, fromLink);
   }
   return getEditToken(giftId) ?? null;
 }

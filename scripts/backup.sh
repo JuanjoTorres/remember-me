@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dumps the production database to a compressed file and removes old dumps. Run on the host, from
 # the folder that holds compose.prod.yaml, e.g. from cron:
-#   15 3 * * * cd /opt/remember-me && ./backup.sh >> backup.log 2>&1
+#   15 3 * * * cd /opt/remember-me && bash backup.sh >> backup.log 2>&1
 # Media lives in Cloudflare R2 and is not part of this backup.
 set -euo pipefail
 

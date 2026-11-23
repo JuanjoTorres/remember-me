@@ -48,6 +48,7 @@ export function subscribeToTokens(listener: () => void): () => void {
  * the API has accepted it, so a truncated link can never replace a working token.
  */
 export function holdEditToken(giftId: string, editToken: string): void {
+  if (sessionTokens.get(giftId) === editToken) return;
   sessionTokens.set(giftId, editToken);
   listeners.forEach((listener) => listener());
 }

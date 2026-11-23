@@ -17,7 +17,9 @@ type GiftAction = (api: GiftApi) => Promise<GiftEditorView>;
 export function useGiftEditor(giftId: string, editToken: string) {
   const api = useMemo(() => giftApi(giftId, editToken), [giftId, editToken]);
   const queryClient = useQueryClient();
-  const queryKey = useMemo(() => ['gift', giftId] as const, [giftId]);
+  // The token is part of the key: switching to another token (a refused link falling back to the
+  // stored one) loads the gift again instead of keeping the earlier error.
+  const queryKey = useMemo(() => ['gift', giftId, editToken] as const, [giftId, editToken]);
   const query = useQuery({ queryKey, queryFn: api.get });
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(null);
   const [failed, setFailed] = useState(false);

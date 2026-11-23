@@ -14,7 +14,8 @@ import { EventsModule } from './shared/events/events.module.js';
 import { PrismaModule } from './shared/prisma/prisma.module.js';
 
 function isGiftCreation(request: Request): boolean {
-  return request.method === 'POST' && request.path === '/gifts';
+  // Same tolerance as the router: trailing slash and letter case do not matter.
+  return request.method === 'POST' && /^\/gifts\/?$/i.test(request.path);
 }
 
 @Module({
