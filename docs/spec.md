@@ -1,8 +1,8 @@
-# remember.me — v1 spec
+# kardoo.me — v1 spec
 
 ## Problem
 
-Giving something digital (a trip, tickets, a plan, a message) feels flat. remember.me turns it into a small
+Giving something digital (a trip, tickets, a plan, a message) feels flat. kardoo.me turns it into a small
 experience: the recipient scans a QR code and goes through a story of photos, messages, voice notes and an
 optional trivia question, ending in an interactive surprise reveal.
 
@@ -21,7 +21,7 @@ optional trivia question, ending in an interactive surprise reveal.
 3. **Publish for free:** a FREE gift can be published and gets a QR code, within the free limits.
 4. **Upgrade** (`PremiumUpgradeSheet`): opens when the creator tries to add a voice note, a trivia card, a
    fourth card, a premium reveal template, or taps "Publish without watermark". Optional order bump for a
-   custom slug with a live preview of `remember.me/for/[slug]`. Redirects to Stripe Checkout.
+   custom slug with a live preview of `kardoo.me/for/[slug]`. Redirects to Stripe Checkout.
 5. **Payment return** (`/create/[giftId]/success`): polls the gift until the webhook has been processed, then
    shows the final QR download (SVG/PNG).
 6. **Experience the gift** (`/for/[slug]`): full-screen stories, background preload of the next cards' media,
@@ -32,13 +32,13 @@ optional trivia question, ending in an interactive surprise reveal.
 Prices live in Stripe (`STRIPE_PRICE_ID_PREMIUM`, `STRIPE_PRICE_ID_CUSTOM_SLUG`); the UI reads amounts from
 the API, never from constants. Limits live in one `PLAN_CAPABILITIES` contract in `shared-types`.
 
-|                                      | FREE         | PREMIUM (one-time, e.g. 4.99 €)      |
-| ------------------------------------ | ------------ | ------------------------------------ |
-| Cards per gift                       | 3            | Unlimited                            |
-| Card types                           | `PHOTO_TEXT` | `PHOTO_TEXT`, `AUDIO_NOTE`, `TRIVIA` |
-| Reveal templates                     | Basic        | `SCRATCH_CARD`, `TICKET`, `GIFT_BOX` |
-| Watermark "Created with remember.me" | Yes          | No                                   |
-| QR download                          | Standard PNG | High quality SVG/PNG                 |
+|                                    | FREE         | PREMIUM (one-time, e.g. 4.99 €)      |
+| ---------------------------------- | ------------ | ------------------------------------ |
+| Cards per gift                     | 3            | Unlimited                            |
+| Card types                         | `PHOTO_TEXT` | `PHOTO_TEXT`, `AUDIO_NOTE`, `TRIVIA` |
+| Reveal templates                   | Basic        | `SCRATCH_CARD`, `TICKET`, `GIFT_BOX` |
+| Watermark "Created with kardoo.me" | Yes          | No                                   |
+| QR download                        | Standard PNG | High quality SVG/PNG                 |
 
 Order bump `CUSTOM_SLUG` (e.g. +1.99 €): the creator chooses the slug instead of the generated one.
 Only available together with PREMIUM in the same checkout.
@@ -123,4 +123,6 @@ Questions 1, 2 and 4 were built as assumed below and still need the owner's conf
    the three premium templates.
 3. Final prices and Stripe products are created by the account owner; 4.99 € and 1.99 € are examples.
 4. The project `CLAUDE.md` says the QR points to `https://remember.me[slug]`; this spec uses
-   `https://remember.me/for/[slug]`, consistent with section 1 of the same file.
+   `<web origin>/for/[slug]`, consistent with section 1 of the same file.
+5. The product was first called remember.me. That domain was not available, so the public brand is
+   kardoo.me. `CLAUDE.md`, the repository and the package scope (`@remember-me/*`) keep the old name.

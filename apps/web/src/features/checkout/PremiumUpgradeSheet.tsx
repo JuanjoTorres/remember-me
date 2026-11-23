@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { isApiError } from '@/features/shared/api/client';
+import { BRAND_NAME } from '@/features/shared/brand';
 import { formatPrice } from '@/features/shared/format';
 import { Button } from '@/features/shared/ui/Button';
 import { Sheet } from '@/features/shared/ui/Sheet';
@@ -95,7 +96,7 @@ export function PremiumUpgradeSheet({
     <Sheet open={open} onClose={onClose} title={t('title')} closeLabel={t('close')}>
       {reason && (
         <p className="text-ink-soft mt-2 text-[0.95rem] leading-relaxed">
-          {t(`reason.${reason}`, { max: PLAN_CAPABILITIES.FREE.maxCards ?? 0 })}
+          {t(`reason.${reason}`, { max: PLAN_CAPABILITIES.FREE.maxCards ?? 0, brand: BRAND_NAME })}
         </p>
       )}
 

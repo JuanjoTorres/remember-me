@@ -17,7 +17,7 @@ export const PlanCapabilitiesSchema = z.object({
   maxCards: z.number().int().positive().nullable(),
   cardTypes: z.array(CardTypeSchema),
   revealTemplates: z.array(RevealTemplateSchema),
-  /** Whether "Created with remember.me" is shown at the end of the experience. */
+  /** Whether "Created with kardoo.me" is shown at the end of the experience. */
   watermark: z.boolean(),
   qrFormats: z.array(QrFormatSchema),
   /** Edge length in pixels of the downloadable PNG QR code. */

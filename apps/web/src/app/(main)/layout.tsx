@@ -3,9 +3,10 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import '../globals.css';
+import { BRAND_NAME } from '@/features/shared/brand';
 
 export const metadata: Metadata = {
-  title: 'remember.me',
+  title: BRAND_NAME,
   description: 'Interactive digital gifts behind a QR code.',
 };
 

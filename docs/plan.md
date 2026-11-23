@@ -1,4 +1,4 @@
-# remember.me — v1 plan
+# kardoo.me — v1 plan
 
 Every phase ends with: `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm build` and `pnpm test`
 green, a review by a fresh subagent, a summary in `docs/phases/`, and a commit on the working branch.

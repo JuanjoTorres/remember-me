@@ -124,7 +124,7 @@
     "copied": "Copiado",
     "downloadPng": "Descargar QR",
     "downloadSvg": "SVG",
-    "watermarkNote": "Los regalos gratuitos terminan con «Created with remember.me».",
+    "watermarkNote": "Los regalos gratuitos terminan con «Created with {brand}».",
     "editLinkTitle": "Guarda tu enlace de edición",
     "editLinkText": "No hay cuenta. Este enlace privado es la única forma de editar el regalo desde otro dispositivo: guárdalo en un lugar seguro y no lo compartas.",
     "copyEditLink": "Copiar enlace de edición",
@@ -142,7 +142,7 @@
       "REVEAL_TEMPLATE": "El rasca y gana, la tarjeta de embarque y la caja regalo forman parte de la experiencia completa.",
       "QR_FORMAT": "El QR en calidad de impresión forma parte de la experiencia completa.",
       "CUSTOM_SLUG": "El enlace personalizado se añade con la experiencia completa.",
-      "WATERMARK": "Mejora este regalo para quitar «Created with remember.me» del final."
+      "WATERMARK": "Mejora este regalo para quitar «Created with {brand}» del final."
     },
     "featureCards": "Tarjetas ilimitadas",
     "featureVoice": "Notas de voz con tu propia voz",
@@ -195,7 +195,7 @@
     "triviaRight": "¡Eso es!",
     "continue": "Continuar",
     "replay": "Ver otra vez",
-    "watermark": "Created with remember.me",
+    "watermark": "Created with {brand}",
     "revealBasic": "Toca para abrir",
     "revealScratch": "Rasca aquí",
     "revealTicket": "Arranca para ver el destino",
@@ -205,12 +205,12 @@
     "ticketPassenger": "Pasajero",
     "notFoundTitle": "Este regalo no está aquí",
     "notFoundText": "Puede que el enlace esté mal escrito o que el regalo aún no esté publicado. Pregunta a quien te lo envió.",
-    "notFoundHome": "¿Qué es remember.me?"
+    "notFoundHome": "¿Qué es {brand}?"
   },
   "privacy": {
     "title": "Privacidad",
     "updated": "Última actualización: 23 de noviembre de 2026",
-    "intro": "remember.me te permite crear un regalo que alguien abre desde un código QR. Esta página explica qué guardamos para que funcione.",
+    "intro": "{brand} te permite crear un regalo que alguien abre desde un código QR. Esta página explica qué guardamos para que funcione.",
     "s1Title": "Qué guardamos",
     "s1Text": "El contenido que añades al regalo: nombres, textos, fotos, notas de voz, la pregunta de trivia y la sorpresa. Las fotos se convierten y se les quitan los metadatos (incluida la ubicación) antes de guardarlas. No creamos cuentas ni te pedimos el correo.",
     "s2Title": "Pagos",
@@ -223,6 +223,6 @@
     "s5Text": "No usamos cookies de publicidad ni de analítica. Tu navegador guarda tu preferencia de idioma y los enlaces de edición de tus regalos.",
     "s6Title": "Contacto",
     "s6Text": "Para cualquier consulta sobre tus datos, escribe a la dirección que figura en el aviso legal de este sitio.",
-    "back": "Volver a remember.me"
+    "back": "Volver a {brand}"
   }
 }

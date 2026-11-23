@@ -90,7 +90,7 @@ describe('GiftEditor upgrade triggers', () => {
     const api = await renderEditor(giftView({ cards: photoCards(1) }));
     await userEvent.click(screen.getByRole('button', { name: 'Publish without watermark' }));
     expect(
-      within(await upgradeSheet()).getByText(/remove “Created with remember.me”/),
+      within(await upgradeSheet()).getByText(/remove “Created with kardoo.me”/),
     ).toBeInTheDocument();
     expect(api.publish).not.toHaveBeenCalled();
   });
@@ -139,6 +139,6 @@ describe('GiftEditor upgrade triggers', () => {
     await renderEditor(giftView({ status: 'PUBLISHED', cards: photoCards(1) }));
     expect(await screen.findByRole('img', { name: 'QR code of your gift' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download QR' })).toBeInTheDocument();
-    expect(screen.getByText('remember.me/for/gift-x9k2bd')).toBeInTheDocument();
+    expect(screen.getByText('kardoo.me/for/gift-x9k2bd')).toBeInTheDocument();
   });
 });

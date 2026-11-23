@@ -20,7 +20,7 @@ const labels: ExperienceLabels = {
   triviaRight: "That's it!",
   continue: 'Continue',
   replay: 'Watch again',
-  watermark: 'Created with remember.me',
+  watermark: 'Created with kardoo.me',
   reveal: {
     BASIC: 'Tap to open',
     SCRATCH_CARD: 'Scratch here',
@@ -127,7 +127,7 @@ describe('GiftExperience', () => {
     expect(screen.getByText('14 March')).toBeInTheDocument();
     expect(screen.getByText('Pack light.')).toBeInTheDocument();
     expect(confetti).toHaveBeenCalled();
-    expect(await screen.findByTestId('watermark')).toHaveTextContent('Created with remember.me');
+    expect(await screen.findByTestId('watermark')).toHaveTextContent('Created with kardoo.me');
   });
 
   it('shows no watermark on a premium gift', async () => {

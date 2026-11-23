@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { BRAND_NAME } from '@/features/shared/brand';
 
 export default async function GiftNotFound() {
   const t = await getTranslations('experience');
@@ -8,7 +9,7 @@ export default async function GiftNotFound() {
       <h1 className="font-display text-4xl leading-tight tracking-tight">{t('notFoundTitle')}</h1>
       <p className="text-paper/70 mt-4 leading-relaxed">{t('notFoundText')}</p>
       <Link href="/" className="text-gold mt-8 text-sm font-semibold underline underline-offset-4">
-        {t('notFoundHome')}
+        {t('notFoundHome', { brand: BRAND_NAME })}
       </Link>
     </main>
   );

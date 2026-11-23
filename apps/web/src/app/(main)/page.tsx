@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { BrandMark } from '@/features/shared/ui/BrandMark';
 
 export default async function HomePage() {
   const t = await getTranslations('home');
@@ -12,7 +13,7 @@ export default async function HomePage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col px-6 pt-10 pb-8">
       <p className="text-ink font-display text-xl tracking-tight">
-        remember<span className="text-ember">.me</span>
+        <BrandMark />
       </p>
 
       <section className="mt-14">

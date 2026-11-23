@@ -136,7 +136,7 @@ test('a creator builds a free gift, hits the free limits and publishes it; the r
   await phone.getByRole('button', { name: 'Tap to open' }).click();
   await expect(phone.getByText('We are going to Lisbon!')).toBeVisible();
   await expect(phone.getByText('Pack light.')).toBeVisible();
-  await expect(phone.getByTestId('watermark')).toHaveText('Created with remember.me');
+  await expect(phone.getByTestId('watermark')).toHaveText('Created with kardoo.me');
 
   // The recipient's phone never downloads the editor, the checkout or Stripe
   const shipped = await scripts();
