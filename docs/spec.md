@@ -115,6 +115,8 @@ Stripe (Checkout, webhooks), Cloudflare R2 (MinIO locally), PostgreSQL.
 
 ## Open questions
 
+Questions 1, 2 and 4 were built as assumed below and still need the owner's confirmation.
+
 1. Can a FREE gift be published at all, or is it preview-only until payment? This spec assumes it **can be
    published** with limits and watermark (the "Publish without watermark" trigger implies it).
 2. Which reveal is the "basic" FREE template? This spec assumes a simple tap-to-open card, separate from

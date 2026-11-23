@@ -12,6 +12,22 @@ a real file to copy the shape from. Do not paste code from this skill; open the 
 
 `pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test` (tests need Docker).
 
+## Add or change something in the web app
+
+- Features live in `apps/web/src/features/<feature>`; pages in `src/app` only compose them.
+- Anything under `src/app/for`, `features/gift-experience` or `features/gift-reveal` is the recipient path:
+  no imports from `gift-creator`, `checkout` or Stripe (lint rule, tested in
+  `apps/web/test/recipient-boundaries.test.ts`), no client i18n provider (texts are resolved on the server,
+  model: `features/gift-experience/labels.ts`), and only `import type` from shared-types.
+- Editor state goes through `useGiftEditor` (`features/gift-creator/useGiftEditor.ts`): `run` for a change,
+  `attempt` for an action that may need an upgrade, `withGrant` for media, QR and payment calls.
+- A new upgrade trigger is a new `CreatorIntent` in `features/checkout/upgrade-triggers.ts` plus a
+  `checkout.reason.*` message in both languages.
+- Every user-facing string goes in `messages/en.json` and `messages/es.json`
+  (`apps/web/test/messages.test.ts` keeps them in sync). Never write a price or a plan limit in a message.
+- Component tests render with `apps/web/test/render.tsx`. Browser flows: `apps/web/e2e/`, run with
+  `pnpm build && pnpm test:e2e`.
+
 ## Add or change an API contract
 
 - Schemas and types live in `packages/shared-types/src/`, exported from `index.ts`. Types come from

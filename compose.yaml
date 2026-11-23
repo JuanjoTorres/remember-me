@@ -78,7 +78,7 @@ services:
       storage:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:4000/health']
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:4000/health']
       interval: 5s
       timeout: 3s
       retries: 20

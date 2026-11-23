@@ -1,0 +1,14 @@
+# TLS certificates are obtained automatically for both domains.
+{$WEB_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	# Uploads are limited by the API itself (12 MB images, 10 MB audio); this is the outer bound.
+	request_body {
+		max_size 15MB
+	}
+	reverse_proxy api:4000
+}
