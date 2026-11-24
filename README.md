@@ -56,6 +56,13 @@ docker compose --profile app up --build
 pnpm format:check && pnpm check:docs && pnpm lint && pnpm typecheck && pnpm build && pnpm test
 ```
 
+A change made only of Markdown documentation needs just `pnpm format:check && pnpm check:docs`.
+A code change is reviewed in full (`CLAUDE.md` section 7): everything at once, with the tests
+three times over and the browser flows, is `pnpm verify`. For a
+change to a Dockerfile, `.dockerignore`, a compose file, the Caddy configuration or anything else
+that ends up in the images, also `pnpm verify:infra` (builds the images, starts the stack from
+them, runs the smoke test).
+
 `pnpm build` needs `NEXT_PUBLIC_API_URL` and `INTERNAL_API_URL` in the shell (for example
 `http://localhost:4000`).
 
@@ -79,5 +86,5 @@ https://staging.kardoo.me and is deployed on every merge to `main`. See `docs/de
 rules of the area and points to one reference per kind of change, so that only the relevant
 document is read. A hook (`.claude/hooks/skill-gate.mjs`) refuses edits in an area until its skill
 has been loaded in the session. The references are living documents: a change that alters what
-they describe updates them in the same commit, and `pnpm check:docs` fails when one names a file
-that no longer exists.
+they describe updates them in the same commit, and `pnpm check:docs` fails when a skill or an agent definition names
+a file that no longer exists.
