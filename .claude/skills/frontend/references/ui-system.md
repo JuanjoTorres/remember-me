@@ -65,7 +65,7 @@ To add or change a colour or font, edit the `@theme` block. Do not write hex val
 - Props: `open`, `onClose`, `title`, `closeLabel`, `children`.
 - A bottom sheet with `role="dialog"`, `aria-modal`, labelled by its title. The backdrop is a button
   labelled `closeLabel`; tapping it or pressing Escape calls `onClose`.
-- Focus: on open, focus moves into the panel; Tab and Shift+Tab stay inside it; on close, focus returns to
+- Focus: on open, focus moves into the panel on the next animation frame, unless it is already on something inside it (a field the user reached first keeps it); Tab and Shift+Tab stay inside it; on close, focus returns to
   the element that had it.
 - Stacking: a module-level list (`openSheets`) records open sheets; only the top one reacts to the keyboard.
   This is what lets the upgrade sheet open over the card sheet and close without losing the card form.
