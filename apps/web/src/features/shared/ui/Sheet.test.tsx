@@ -38,7 +38,7 @@ describe('Sheet', () => {
       frames.push(callback),
     );
     vi.stubGlobal('cancelAnimationFrame', () => undefined);
-    render(<Stack />);
+    const { unmount } = render(<Stack />);
     await userEvent.click(screen.getByRole('button', { name: 'Open form' }));
     const field = await screen.findByRole('textbox', { name: 'Text' });
     await userEvent.click(field);
@@ -49,6 +49,9 @@ describe('Sheet', () => {
     expect(field).toHaveFocus();
     await userEvent.keyboard('Half written');
     expect(field).toHaveValue('Half written');
+    // Unmount while the stubs are still in place, so the real cancelAnimationFrame never sees a
+    // made-up frame id.
+    unmount();
   });
 
   it('moves focus into the dialog and gives it back on close', async () => {
