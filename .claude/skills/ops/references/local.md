@@ -55,6 +55,10 @@ storage is S3Mock: files disappear when its container is recreated.
 - Stop dev servers by process id (`ss -ltnp` shows who holds 3000/4000). `pkill -f` on a pattern
   can kill the shell that runs it.
 - The local database keeps data between runs; e2e and manual tests share it.
+- `compose.yaml` fixes the project name to `remember-me`, so every checkout, a git worktree
+  included, uses the same containers, network and volume. `pnpm verify` and `pnpm verify:infra`
+  run from a worktree reuse the database and storage that are already up instead of starting a
+  second pair on the same ports.
 - Playwright cannot run on the host without system libraries; always go through `scripts/e2e.sh`.
 
 ## Change checklist

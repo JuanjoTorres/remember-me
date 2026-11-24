@@ -38,7 +38,7 @@ step 'wait for the web'
 # The web container has no healthcheck, so `--wait` returns as soon as its process starts.
 for attempt in $(seq 1 60); do
   curl -fsS --max-time 5 -o /dev/null http://localhost:3000/ 2>/dev/null && break
-  [ "$attempt" = 60 ] && { echo 'The web did not answer on port 3000 within 60 s' >&2; exit 1; }
+  [ "$attempt" = 60 ] && { echo 'The web did not answer on port 3000 after 60 attempts' >&2; exit 1; }
   sleep 1
 done
 
