@@ -4,25 +4,36 @@ Target: one VPS with Docker Compose. Caddy terminates TLS for two domains (web a
 on the host, media lives in Cloudflare R2. The images are independent, so `web` and `api` can later run as
 separate pods without changes.
 
-This setup has not been run against a real host yet: the images, the compose file syntax and the local
-stack are verified, the workflow and the VPS steps are not.
+Staging has run this way since 2026-11-24 (`https://staging.kardoo.me`): the workflow, the server
+steps, payments in Stripe test mode, uploads to R2 and the backup with a test restore have all been
+exercised there. Production has not been created yet, so nothing here has been run with live
+Stripe keys. What exists in each environment is recorded in
+`.claude/skills/ops/references/environments.md`.
 
 ## One-time setup
 
-1. **DNS:** point the web domain and the API domain at the VPS.
-2. **Cloudflare R2:** create a bucket, give it a public custom domain (this is `MEDIA_PUBLIC_URL`), and
-   create an API token with object read/write on that bucket.
-3. **Stripe (live mode):**
+1. **DNS:** point the web domain and the API domain at the VPS (staging: `staging.kardoo.me` and
+   `api.staging.kardoo.me`). The zone is on Cloudflare; keep these records in "DNS only" mode, so
+   that Caddy can obtain certificates and the API sees the visitor's address.
+2. **Cloudflare R2:** create a bucket per environment, give it a public custom domain (this is
+   `MEDIA_PUBLIC_URL`; it requires the DNS zone to be on Cloudflare), and create an API token with
+   object read/write limited to that bucket. `S3_ENDPOINT` is the account endpoint without the
+   bucket name.
+3. **Stripe (test mode for staging, live mode for production):**
    - Create two products with one-time EUR prices: full experience and custom link.
    - Enable the payment methods you want in Settings → Payment methods: cards, Apple Pay, Google Pay.
      Bizum needs approval from Stripe first.
-   - Add a webhook endpoint `https://<api-domain>/payments/webhook` for `checkout.session.completed`,
+   - Add a webhook endpoint (scope "your account", payload style "snapshot")
+     `https://<api-domain>/payments/webhook` for `checkout.session.completed`,
      `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` and
      `checkout.session.expired`; copy its signing secret.
    - Register the web domain for Apple Pay if Stripe asks for it.
-4. **VPS:** install Docker, create a folder (for example `/opt/remember-me`), copy `deploy/.env.example`
-   there as `.env` and fill it in. `IMAGE_PREFIX` must be written in lowercase, whatever the casing of the
-   GitHub owner or repository. Log in to GHCR if the images are private.
+4. **VPS:** open inbound TCP 22, 80 and 443 in the provider's firewall and nothing else. Install
+   Docker, create a `deploy` user in the `docker` group that logs in with an SSH key made only for
+   deployments, and turn password logins off. Create a folder owned by that user (staging uses
+   `/opt/kardoo-staging`), copy `deploy/.env.example` there as `.env` (mode 600) and fill it in. `IMAGE_PREFIX` must be written in lowercase, whatever the casing of the
+   GitHub owner or repository. The images are public while the
+   repository is; if it becomes private, log the host in to GHCR with a token that can read packages.
 5. **GitHub repository**, Settings → Environments: create `staging` and `production`. In each one:
    - Variables: `NEXT_PUBLIC_API_URL` (`https://<api-domain>` of that environment) and `DEPLOY_PATH` (the
      folder on its host).
@@ -64,8 +75,16 @@ After the first deploy, check `https://<api-domain>/health` and run
 
 ## Backups
 
-`backup.sh` is copied to the VPS on each deploy. Schedule it with cron (`bash backup.sh`); it keeps 14 days of dumps by
-default. Copy the dumps off the host. Media is in R2 and is not included.
+`backup.sh` is copied to the VPS on each deploy. Schedule it in the crontab of the deploy user:
+
+```
+15 3 * * * cd /opt/kardoo-staging && bash backup.sh >> backup.log 2>&1
+```
+
+It keeps 14 days of dumps by default, in `backups/` inside the host folder. Staging has this
+schedule. Copy the dumps off the host: that is not set up yet. Media is in R2 and is not included.
+How to check a dump by restoring it into a scratch database is in
+`.claude/skills/ops/references/operations.md`.
 
 ## Operations
 

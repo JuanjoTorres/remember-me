@@ -35,7 +35,7 @@ Payments need Stripe test settings in `apps/api/.env`: a secret key, two one-tim
 experience, custom link) and the webhook secret printed by:
 
 ```bash
-stripe listen --forward-to localhost:4000/payments/webhook
+stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired --forward-to localhost:4000/payments/webhook
 ```
 
 Cards, Apple Pay, Google Pay and Bizum are enabled in the Stripe Dashboard, not in code.
@@ -53,8 +53,11 @@ docker compose --profile app up --build
 ## Checks
 
 ```bash
-pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test
+pnpm format:check && pnpm check:docs && pnpm lint && pnpm typecheck && pnpm build && pnpm test
 ```
+
+`pnpm build` needs `NEXT_PUBLIC_API_URL` and `INTERNAL_API_URL` in the shell (for example
+`http://localhost:4000`).
 
 `pnpm test` needs Docker: the API tests start real PostgreSQL, Redis and S3-compatible storage with
 Testcontainers.
@@ -67,4 +70,14 @@ pnpm build && pnpm test:e2e
 
 ## Deploy
 
-One VPS with Docker, images from GHCR, media in Cloudflare R2. See `docs/deploy.md`.
+One VPS with Docker, images from GHCR, media in Cloudflare R2. Staging runs at
+https://staging.kardoo.me and is deployed on every merge to `main`. See `docs/deploy.md`.
+
+## Working on this repository with Claude Code
+
+`.claude/skills/` holds one skill per area (`backend`, `frontend`, `ops`). Each `SKILL.md` lists the
+rules of the area and points to one reference per kind of change, so that only the relevant
+document is read. A hook (`.claude/hooks/skill-gate.mjs`) refuses edits in an area until its skill
+has been loaded in the session. The references are living documents: a change that alters what
+they describe updates them in the same commit, and `pnpm check:docs` fails when one names a file
+that no longer exists.
