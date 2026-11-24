@@ -67,3 +67,11 @@ These files are part of the code.
 - The build needs `NEXT_PUBLIC_API_URL` and `INTERNAL_API_URL` set (for example `http://localhost:4000`).
   `pnpm test` and `pnpm test:e2e` need Docker.
 - Never weaken or delete a test to make it pass.
+
+Then, for any code change, the mandatory review of `CLAUDE.md` section 7: a fresh `reviewer` agent (`.claude/agents/reviewer.md`) reviews
+the change and runs `pnpm verify` (everything above, the tests three times, the browser flows). A test
+that fails once is a failure to explain, never something to re-run until it passes.
+
+A change made only of Markdown (`docs/**`, `README.md`, `CLAUDE.md`, `.claude/skills/**`,
+`.claude/agents/**`) needs only `pnpm format:check && pnpm check:docs`: no `pnpm verify` and no
+reviewer.

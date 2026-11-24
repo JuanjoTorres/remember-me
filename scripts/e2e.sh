@@ -4,11 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The project name is fixed in compose.yaml, so the network has the same name in every checkout.
 docker compose up -d --wait postgres storage
 DATABASE_URL=postgresql://remember:remember@localhost:5432/remember_me pnpm --filter api migrate:deploy
 
 docker run --rm \
-  --network "$(basename "$PWD")_default" \
+  --network remember-me_default \
   --user "$(id -u):$(id -g)" \
   -e HOME=/tmp -e CI=1 \
   -e E2E_DATABASE_URL=postgresql://remember:remember@postgres:5432/remember_me \

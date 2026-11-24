@@ -3,6 +3,11 @@
 #   Everything, from the Docker images:     docker compose --profile app up --build
 # The app profile reads Stripe settings from a `.env` file next to this one (see `.env.example`).
 # Without them the stack still starts, but prices and payments do not work.
+
+# Fixed, so that every checkout (a git worktree included) shares one stack instead of starting a
+# second one that fights over the same host ports. `scripts/e2e.sh` relies on this name.
+name: remember-me
+
 services:
   postgres:
     image: postgres:17-alpine

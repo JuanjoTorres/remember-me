@@ -21,8 +21,9 @@ expectation of new intended behaviour is wrong; fix that and say which.
 - Picks up `*.test.ts` and `*.test.tsx` under `apps/web/src` and `apps/web/test`. Tests sit next to the code
   they cover; tests about the app as a whole go in `apps/web/test`.
 - `apps/web/test/setup.ts` loads the jest-dom matchers and unmounts after each test.
-- `apps/web/vitest.config.ts` sets `testTimeout` above the 5 s default, because the boundary test starts
-  ESLint and took just over 5 s on a CI runner.
+- `apps/web/test/recipient-boundaries.test.ts` gives its own tests a longer timeout (`LINT_TIMEOUT_MS`): the
+  first lint of a run loads ESLint and takes about 5 s alone and 5 to 8 s when every package is tested at once, as `pnpm verify` does, and it hit the 5 s default on a CI
+  runner. Every other test keeps the default, so a hang is still reported quickly.
 - A test that passes locally and fails in CI on a timeout is not proof of a slow runner. On 2026-11-24 two
   such failures (`findByRole` never finding the upgrade sheet, a field holding "H" instead of the typed
   text) were one real bug: `Sheet` focused its panel a frame after opening and pulled focus out of the field
@@ -45,24 +46,24 @@ object: they must work without providers, and the test proves it.
 
 ## Test files
 
-| File                                                                | Covers                                                                                               |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `apps/web/src/config/env.test.ts`                                   | Env parsing: trailing slash, missing public URL, non-http internal URL                               |
-| `apps/web/src/i18n/locale.test.ts`                                  | `resolveLocale`: cookie, header weights, fallback                                                    |
-| `apps/web/test/messages.test.ts`                                    | Same keys and same placeholders in English and Spanish                                               |
-| `apps/web/test/recipient-boundaries.test.ts`                        | The lint rule: recipient files cannot import editor, checkout, Stripe (runs in the node environment) |
-| `apps/web/src/features/shared/ui/Sheet.test.tsx`                    | Focus in and back, Tab trap, only the top sheet reacts to Escape                                     |
-| `apps/web/src/features/gift-creator/components/GiftEditor.test.tsx` | Every upgrade trigger, server refusal, publish rules, premium gift, QR after publishing              |
-| `apps/web/src/features/gift-creator/components/SavedInput.test.tsx` | Save on blur only when changed; typed text wins over a stale server value                            |
-| `apps/web/src/features/gift-creator/card-form.test.ts`              | `toCardInput` against `CardInputSchema`; `fitWithin`                                                 |
-| `apps/web/src/features/gift-creator/storage.test.ts`                | Edit link round trip, saved gifts, held vs stored token, storage unavailable                         |
-| `apps/web/src/features/checkout/upgrade-triggers.test.ts`           | `upgradeReasonFor` for every intent and plan                                                         |
-| `apps/web/src/features/checkout/PremiumUpgradeSheet.test.tsx`       | Reasons, prices from the API, custom link preview and blocking, checkout request, failure            |
-| `apps/web/src/features/checkout/useGiftPaymentStatus.test.ts`       | Polling to confirmed, delayed, repeated failure, stop on unmount (fake timers)                       |
-| `apps/web/src/features/gift-experience/stories.test.ts`             | Step order, navigation bounds, trivia gate, restart, `mediaAhead`                                    |
-| `apps/web/src/features/gift-experience/usePreloadMedia.test.ts`     | Next media is requested early and never twice                                                        |
-| `apps/web/src/features/gift-experience/GiftExperience.test.tsx`     | Whole recipient flow per reveal template, watermark, confetti, reduced motion, replay                |
-| `apps/web/src/features/gift-reveal/scratch.test.ts`                 | `clearedRatio`                                                                                       |
+| File                                                                | Covers                                                                                                 |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `apps/web/src/config/env.test.ts`                                   | Env parsing: trailing slash, missing public URL, non-http internal URL                                 |
+| `apps/web/src/i18n/locale.test.ts`                                  | `resolveLocale`: cookie, header weights, fallback                                                      |
+| `apps/web/test/messages.test.ts`                                    | Same keys and same placeholders in English and Spanish                                                 |
+| `apps/web/test/recipient-boundaries.test.ts`                        | The lint rule: recipient files cannot import editor, checkout, Stripe (runs in the node environment)   |
+| `apps/web/src/features/shared/ui/Sheet.test.tsx`                    | Focus in and back, focus left alone when already inside, Tab trap, only the top sheet reacts to Escape |
+| `apps/web/src/features/gift-creator/components/GiftEditor.test.tsx` | Every upgrade trigger, server refusal, publish rules, premium gift, QR after publishing                |
+| `apps/web/src/features/gift-creator/components/SavedInput.test.tsx` | Save on blur only when changed; typed text wins over a stale server value                              |
+| `apps/web/src/features/gift-creator/card-form.test.ts`              | `toCardInput` against `CardInputSchema`; `fitWithin`                                                   |
+| `apps/web/src/features/gift-creator/storage.test.ts`                | Edit link round trip, saved gifts, held vs stored token, storage unavailable                           |
+| `apps/web/src/features/checkout/upgrade-triggers.test.ts`           | `upgradeReasonFor` for every intent and plan                                                           |
+| `apps/web/src/features/checkout/PremiumUpgradeSheet.test.tsx`       | Reasons, prices from the API, custom link preview and blocking, checkout request, failure              |
+| `apps/web/src/features/checkout/useGiftPaymentStatus.test.ts`       | Polling to confirmed, delayed, repeated failure, stop on unmount (fake timers)                         |
+| `apps/web/src/features/gift-experience/stories.test.ts`             | Step order, navigation bounds, trivia gate, restart, `mediaAhead`                                      |
+| `apps/web/src/features/gift-experience/usePreloadMedia.test.ts`     | Next media is requested early and never twice                                                          |
+| `apps/web/src/features/gift-experience/GiftExperience.test.tsx`     | Whole recipient flow per reveal template, watermark, confetti, reduced motion, replay                  |
+| `apps/web/src/features/gift-reveal/scratch.test.ts`                 | `clearedRatio`                                                                                         |
 
 ## Writing a component test
 

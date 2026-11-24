@@ -48,7 +48,8 @@ Things that are easy to break:
 
 ## Change checklist
 
-- A new check: add it to `verify`, to the "Before finishing" line of every skill and to
+- A new check: add it to the `verify` job of CI, to `scripts/verify.sh` (the local `pnpm verify`,
+  which is a different thing: it also repeats the tests and runs the browser flows), to the "Before finishing" line of every skill and to
   `README.md`.
 - A new image or build argument: the `images` matrix, `deploy/compose.prod.yaml`, the matching
   Dockerfile, and `.claude/skills/ops/references/stack.md`.

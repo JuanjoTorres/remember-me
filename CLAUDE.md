@@ -34,7 +34,7 @@
 ## 5. Convenciones de Código y Calidad
 - Todas las variables de entorno (`development`, `staging`, `production`) deben validarse estrictamente al arrancar con Zod en `src/config/env.ts` de cada app.
 - Usar siempre `pnpm` como gestor de paquetes (`pnpm --filter api ...`, `pnpm --filter web ...`).
-- Antes de dar por finalizada cualquier tarea, ejecutar y verificar que `pnpm typecheck` y `pnpm build` pasan sin errores.
+- Antes de dar por finalizada cualquier tarea, ejecutar y verificar que `pnpm typecheck` y `pnpm build` pasan sin errores, y pasar la revisión obligatoria de la sección 7.
 
 ## 6. Skills por área y documentación viva
 El conocimiento detallado del repo vive en `.claude/skills/<área>/`: un `SKILL.md` corto con las reglas del área y una tabla que dirige a **una** referencia por tipo de cambio (`references/*.md`). Este archivo solo contiene las reglas globales.
@@ -51,5 +51,21 @@ El conocimiento detallado del repo vive en `.claude/skills/<área>/`: un `SKILL.
 - **Decisiones del propietario:** cuando el propietario diga "esto se hace así", se anota en la referencia correspondiente bajo `## Decisions` con la fecha, y si es una regla global, también aquí.
 - **Si la referencia y el código discrepan, manda el código:** se corrige la referencia y se avisa.
 - **Parte nueva del sistema:** si aparece un módulo, feature o pieza de infraestructura que ninguna referencia cubre, se crea su referencia y se añade a la tabla del `SKILL.md`; si aparece un área nueva, se crea su skill y se añade su ruta al hook.
-- **Verificación:** `pnpm check:docs` falla si una skill nombra un archivo que ya no existe. Se ejecuta en CI y forma parte de las comprobaciones finales junto con `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` y `pnpm test`.
+- **Verificación:** `pnpm check:docs` falla si una skill o una definición de agente (`.claude/skills`, `.claude/agents`) nombra un archivo que ya no existe. Se ejecuta en CI y forma parte de las comprobaciones finales junto con `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build` y `pnpm test`.
 - Las skills y referencias se escriben en inglés, como el resto del repositorio.
+
+## 7. Revisión obligatoria tras cada cambio
+Ningún cambio se da por terminado, ni se abre su pull request, sin la comprobación que le corresponde según lo que toca (decisión del propietario, 2026-11-24):
+
+- **Cambio solo de documentación** (únicamente Markdown: `docs/**`, `README.md`, `CLAUDE.md`, `.claude/skills/**`, `.claude/agents/**`): basta con `pnpm format:check` y `pnpm check:docs`. No requiere `pnpm verify` ni agente `reviewer`.
+- **Cambio de código** (cualquier otra cosa: `apps/`, `packages/`, `scripts/`, `deploy/`, `.github/`, Dockerfiles, archivos compose y configuración como `package.json`, `turbo.json`, el lockfile, `.claude/hooks` o `.claude/settings.json`): revisión completa, sea del tamaño que sea. Un cambio que mezcla código y documentación es un cambio de código.
+
+La revisión completa:
+
+- **La hace el agente `reviewer`** (`.claude/agents/reviewer.md`): un agente nuevo, sin el contexto de quien escribió el cambio. Se le da la rama base y una frase con lo que el cambio pretende, no las conclusiones propias.
+- **Revisa la aplicación entera, no solo el diff:** ejecuta `pnpm verify` (`scripts/verify.sh`), que pasa formato, documentación, lint, typecheck, build, **todos** los tests unitarios y de integración tres veces seguidas y los flujos de navegador. Se ejecuta completo aunque el cambio sea de una línea.
+- **Cambios de infraestructura:** `pnpm verify` no construye las imágenes Docker. Si el cambio toca un Dockerfile, `.dockerignore`, un archivo compose, `deploy/Caddyfile` o cualquier otra cosa que acabe dentro de las imágenes o que use el propio script (un paquete nuevo del workspace, dependencias o el lockfile, migraciones de Prisma, la salida de Next.js, `scripts/smoke.sh`, `scripts/verify-infra.sh`, `deploy/.env.example`), el revisor ejecuta además `pnpm verify:infra` (`scripts/verify-infra.sh`): comprueba la sintaxis del Caddyfile y del compose de producción, construye las tres imágenes, arranca el stack local desde ellas y pasa la prueba de humo. No detecta una variable que falte en el `.env` del servidor, ni demuestra los certificados y el enrutado real de Caddy, ni un workflow de GitHub: eso solo se demuestra en su primera ejecución real; se dice así en el informe y se vigila.
+- **Un fallo intermitente es un fallo.** Un test que falla una vez y pasa al repetirlo ha fallado: prohibido relanzar hasta que salga verde, y prohibido darlo por "inestable" sin más. Se investiga hasta encontrar la causa y se arregla el código o el test. Subir un tiempo de espera solo es aceptable si se demuestra que la operación es legítimamente lenta.
+- **El CI cuenta igual que la máquina local:** si `pnpm verify` pasa en local pero el CI falla en el mismo commit, hay un defecto que depende de los tiempos o del entorno; se investiga antes de fusionar. Tras fusionar se comprueba también el CI de `main`.
+- **Los hallazgos se corrigen y se vuelve a revisar** con un agente `reviewer` nuevo, hasta que el veredicto sea `pass`. Si un hallazgo se decide no corregir, se le explica al propietario y decide él.
+- **En el informe final se dice qué revisó el agente y con qué resultado**, incluido cuántas veces corrieron los tests y cualquier cosa que no se pudo comprobar.

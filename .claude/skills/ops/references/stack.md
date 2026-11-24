@@ -47,6 +47,7 @@ host `.env` must define.
 
 ## Change checklist
 
-- Build and run it: `docker compose --profile app up --build`, then `bash scripts/smoke.sh`.
+- Prove it with `pnpm verify:infra` (`scripts/verify-infra.sh`): syntax of the Caddy configuration and of the
+  production compose file checked (a variable missing from a host `.env` is not detected), images built, stack started from them, smoke test run.
 - Update `docs/deploy.md` if a person setting up a host has to do something different.
 - Update `.claude/skills/ops/references/pipeline.md` if images, targets or copied files change.

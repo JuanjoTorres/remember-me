@@ -51,6 +51,15 @@ These files are part of the system. In the same change:
 ## Before finishing
 
 `pnpm format:check && pnpm lint && pnpm typecheck && pnpm build && pnpm test && pnpm check:docs`.
-A change to a Dockerfile or compose file is also proven by building it:
-`docker compose --profile app up --build` and `bash scripts/smoke.sh`. A workflow change cannot be
+A change to a Dockerfile, a compose file or the Caddy configuration is also proven by
+`pnpm verify:infra` (builds the images, starts the stack from them, runs `scripts/smoke.sh`). A workflow change cannot be
 proven locally: say so, and watch its first run.
+
+Then, for any code change, the mandatory review of `CLAUDE.md` section 7: a fresh `reviewer` agent
+(`.claude/agents/reviewer.md`) reviews the change and runs `pnpm verify` (the checks of the first
+line with the cache bypassed, the tests three times, the browser flows). For a change to a Dockerfile, `.dockerignore`, a compose file, `deploy/Caddyfile`, or anything else that ends up in the images or that the script uses (a new workspace package, dependencies or the lockfile, Prisma migrations, the Next.js output setting, `scripts/smoke.sh`, `scripts/verify-infra.sh`, `deploy/.env.example`), it also runs `pnpm verify:infra` (`scripts/verify-infra.sh`): syntax of the Caddy configuration and of the production compose file, image build, stack started from the images, smoke test. A test that fails once is a failure to explain, never something to re-run
+until it passes.
+
+A change made only of Markdown (`docs/**`, `README.md`, `CLAUDE.md`, `.claude/skills/**`,
+`.claude/agents/**`) needs only `pnpm format:check && pnpm check:docs`: no `pnpm verify` and no
+reviewer.
