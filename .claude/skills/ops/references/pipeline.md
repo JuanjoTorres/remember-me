@@ -11,6 +11,10 @@ Runs on every pull request and on pushes to `main`. A newer run on the same ref 
 | `verify` | install (frozen lockfile), `format:check`, `check:docs`, `lint`, `typecheck`, `build`, `test` |
 | `e2e`    | after `verify`: install, `build`, `test:e2e` (Playwright in Docker, see `scripts/e2e.sh`)     |
 
+`verify` runs the tests one package at a time (`pnpm test --concurrency=1`): in parallel, the API
+test containers starved the web component tests on the runner and time-sensitive tests failed at
+random (seen on `main` on 2026-11-24).
+
 Both jobs set `NEXT_PUBLIC_API_URL` and `INTERNAL_API_URL` to `http://localhost:4000`: the web
 build fails without them. API tests start their own containers through Testcontainers.
 
