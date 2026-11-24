@@ -30,9 +30,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       # Integration tests start their own PostgreSQL through Testcontainers (Docker is preinstalled).
-      # One package at a time: run together, the API containers starve the web component tests on the
-      # runner's few cores and time-sensitive tests fail at random.
-      - run: pnpm test --concurrency=1
+      - run: pnpm test
 
   e2e:
     runs-on: ubuntu-latest

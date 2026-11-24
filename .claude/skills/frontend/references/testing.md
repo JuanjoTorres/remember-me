@@ -20,11 +20,15 @@ expectation of new intended behaviour is wrong; fix that and say which.
 - Environment `jsdom`, React plugin, alias `@` to `apps/web/src`.
 - Picks up `*.test.ts` and `*.test.tsx` under `apps/web/src` and `apps/web/test`. Tests sit next to the code
   they cover; tests about the app as a whole go in `apps/web/test`.
-- `apps/web/test/setup.ts` loads the jest-dom matchers, unmounts after each test, and raises the Testing
-  Library wait (`asyncUtilTimeout`) above its 1 s default. `apps/web/vitest.config.ts` raises `testTimeout`
-  above the 5 s default. Both were raised on 2026-11-24 after CI on `main` failed twice in a row on two
-  different tests that were only slow (a `findByRole` and the ESLint-based boundary test). Do not lower
-  them, and do not answer a timeout by raising them further without finding out what is slow.
+- `apps/web/test/setup.ts` loads the jest-dom matchers and unmounts after each test.
+- `apps/web/vitest.config.ts` sets `testTimeout` above the 5 s default, because the boundary test starts
+  ESLint and took just over 5 s on a CI runner.
+- A test that passes locally and fails in CI on a timeout is not proof of a slow runner. On 2026-11-24 two
+  such failures (`findByRole` never finding the upgrade sheet, a field holding "H" instead of the typed
+  text) were one real bug: `Sheet` focused its panel a frame after opening and pulled focus out of the field
+  being typed in. Read what the page contained when the test gave up before touching any timeout.
+- To test something that depends on frame timing, stub `requestAnimationFrame`, collect the callbacks and run
+  them at the moment you choose (see the focus test in `apps/web/src/features/shared/ui/Sheet.test.tsx`).
 - The config sets `NEXT_PUBLIC_API_URL` and `INTERNAL_API_URL` so `apps/web/src/config/env.ts` can be
   imported.
 

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Sheet } from './Sheet';
 
 function Stack() {
@@ -28,6 +28,29 @@ function Stack() {
 }
 
 describe('Sheet', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('does not take focus away from a field the user already reached inside the dialog', async () => {
+    // The sheet focuses its panel on the next animation frame. Hold that frame back until the user
+    // is already in the field, which is the order a slow device (or CI runner) produces.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    render(<Stack />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open form' }));
+    const field = await screen.findByRole('textbox', { name: 'Text' });
+    await userEvent.click(field);
+
+    expect(frames.length).toBeGreaterThan(0);
+    frames.forEach((callback) => callback(0));
+
+    expect(field).toHaveFocus();
+    await userEvent.keyboard('Half written');
+    expect(field).toHaveValue('Half written');
+  });
+
   it('moves focus into the dialog and gives it back on close', async () => {
     render(<Stack />);
     const opener = screen.getByRole('button', { name: 'Open form' });

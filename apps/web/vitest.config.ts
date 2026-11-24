@@ -9,8 +9,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
     setupFiles: ['./test/setup.ts'],
-    // Generous on purpose: one test starts ESLint, and on a shared CI runner these tests have been
-    // starved past the 5 s default. A timeout here should mean "hung", never "slow machine".
+    // One test starts ESLint and took just over the 5 s default on a CI runner (2026-11-24).
     testTimeout: 30_000,
     env: {
       NEXT_PUBLIC_API_URL: 'http://localhost:4000',

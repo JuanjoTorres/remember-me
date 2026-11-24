@@ -31,8 +31,11 @@ export function Sheet({ open, onClose, title, closeLabel, children }: SheetProps
     const self = Symbol('sheet');
     openSheets.push(self);
     const opener = document.activeElement as HTMLElement | null;
-    // Move focus into the dialog, keep Tab inside it, and give focus back on close.
-    const focusPanel = requestAnimationFrame(() => panel.current?.focus());
+    // Move focus into the dialog, keep Tab inside it, and give focus back on close. The frame may
+    // arrive after the user has already reached a field inside the dialog: never pull focus out of it.
+    const focusPanel = requestAnimationFrame(() => {
+      if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
+    });
     const onKey = (event: KeyboardEvent) => {
       if (openSheets.at(-1) !== self) return;
       if (event.key === 'Escape') return close.current();
