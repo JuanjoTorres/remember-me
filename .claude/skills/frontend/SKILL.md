@@ -13,7 +13,7 @@ copy code: open the file they name.
 
 - Code lives in `apps/web/src/features/<feature>` (`gift-creator`, `gift-experience`, `gift-reveal`,
   `checkout`, `shared`). Files under `apps/web/src/app` only compose features.
-- The recipient path is `apps/web/src/app/for`, `gift-experience` and `gift-reveal`. It never imports
+- The recipient path is `apps/web/src/app/(gift)`, `gift-experience` and `gift-reveal`. It never imports
   `gift-creator`, `checkout` or Stripe (lint rule in `apps/web/eslint.config.mjs`, tested by
   `apps/web/test/recipient-boundaries.test.ts`), has no client providers, and imports only types from
   `@remember-me/shared-types`.

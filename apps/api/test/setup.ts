@@ -19,6 +19,5 @@ process.env['STRIPE_PRICE_ID_CUSTOM_SLUG'] = 'price_custom_slug_test';
 process.env['RATE_LIMIT_PER_MINUTE'] = '1000000';
 process.env['GIFT_CREATION_LIMIT_PER_HOUR'] = '1000000';
 process.env['LINK_LOOKUP_MISS_LIMIT'] = '1000000';
-process.env['SLUG_CHECK_LIMIT'] = '1000000';
 // The daily jobs are tested by calling their service; the real schedule must never fire mid-test.
 process.env['SCHEDULED_JOBS'] = 'off';

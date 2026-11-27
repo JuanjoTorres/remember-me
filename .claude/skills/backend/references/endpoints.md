@@ -19,19 +19,18 @@ Every edit-token route answers 404 `NOT_FOUND` for an unknown gift (checked befo
 `UNAUTHORIZED` for a missing or wrong token, 400 `VALIDATION_ERROR` for a malformed UUID or body. All
 return `GiftEditorView` unless noted.
 
-| Method and path                       | Auth       | Request                        | Notable errors                                                                                                                                                                                 |
-| ------------------------------------- | ---------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /gifts`                         | none       | `CreateGiftRequestSchema`      | Own throttler `gift-creation`. Returns `CreateGiftResponse` (the only time the edit token is sent)                                                                                             |
-| `GET /gifts/check-slug`               | none       | query `slug` (string, max 200) | Always 200 with `SlugAvailability`; reasons `INVALID`, `RESERVED`, `TAKEN`; `suggestions` holds free alternatives when taken 429 `RATE_LIMITED` after `SLUG_CHECK_LIMIT` checks in ten minutes |
-| `GET /gifts/:giftId`                  | edit token | —                              | —                                                                                                                                                                                              |
-| `PATCH /gifts/:giftId`                | edit token | `UpdateGiftRequestSchema`      | 423 `GIFT_LOCKED`; 402 `PREMIUM_REQUIRED` (`REVEAL_TEMPLATE`, published gifts only); 400 foreign media URL; 422 `GIFT_INCOMPLETE` clearing the headline                                        |
-| `DELETE /gifts/:giftId`               | edit token | —                              | 204, no body. Deletes the gift and its files for good, also when locked. Fails (gift kept) if a `gift.deleted` subscriber fails                                                                |
-| `POST /gifts/:giftId/publish`         | edit token | —                              | 200. 422 `GIFT_INCOMPLETE` with `details.missing`; 402 `PREMIUM_REQUIRED` (`PRO_FEATURES`, with `details.proFeatures`) for a free gift using paid features                                     |
-| `PUT /gifts/:giftId/slug`             | edit token | `ChangeSlugRequestSchema`      | 402 `PREMIUM_REQUIRED` (`CUSTOM_SLUG`) unless a paid link is pending; 409 `SLUG_TAKEN`; 400 for a link without a valid ending                                                                  |
-| `POST /gifts/:giftId/cards`           | edit token | `CardInputSchema`              | 423 `GIFT_LOCKED`; 402 `PREMIUM_REQUIRED` (`CARD_TYPE`, `MAX_CARDS`, published gifts only); 409 `CONFLICT` at `MAX_CARDS_HARD_LIMIT`; 400 foreign media                                        |
-| `PUT /gifts/:giftId/cards/order`      | edit token | `ReorderCardsRequestSchema`    | 423 `GIFT_LOCKED`; 400 unless the list holds every card of the gift exactly once                                                                                                               |
-| `PATCH /gifts/:giftId/cards/:cardId`  | edit token | `CardInputSchema`              | 423 `GIFT_LOCKED`; 404 unknown card; 400 if the card type changes; 400 foreign media                                                                                                           |
-| `DELETE /gifts/:giftId/cards/:cardId` | edit token | —                              | 423 `GIFT_LOCKED`; 404 unknown card; 422 `GIFT_INCOMPLETE` removing the last card of a published gift                                                                                          |
+| Method and path                       | Auth       | Request                     | Notable errors                                                                                                                                                                           |
+| ------------------------------------- | ---------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /gifts`                         | none       | `CreateGiftRequestSchema`   | Own throttler `gift-creation`. Returns `CreateGiftResponse` (the only time the edit token is sent)                                                                                       |
+| `GET /gifts/:giftId`                  | edit token | —                           | —                                                                                                                                                                                        |
+| `PATCH /gifts/:giftId`                | edit token | `UpdateGiftRequestSchema`   | 423 `GIFT_LOCKED`; 402 `PREMIUM_REQUIRED` (`REVEAL_TEMPLATE`, published gifts only); 400 foreign media URL; 422 `GIFT_INCOMPLETE` clearing the headline                                  |
+| `DELETE /gifts/:giftId`               | edit token | —                           | 204, no body. Deletes the gift and its files for good, also when locked. Fails (gift kept) if a `gift.deleted` subscriber fails                                                          |
+| `POST /gifts/:giftId/publish`         | edit token | —                           | 200. 422 `GIFT_INCOMPLETE` with `details.missing`; 402 `PREMIUM_REQUIRED` (`PRO_FEATURES`, with `details.proFeatures`) for a free gift using paid features                               |
+| `PUT /gifts/:giftId/slug`             | edit token | `ChangeSlugRequestSchema`   | Body `{ name }`: the API puts a code in front. 402 `PREMIUM_REQUIRED` (`CUSTOM_SLUG`) unless a paid link is pending; 400 for a name that is not valid, also for a whole link with a code |
+| `POST /gifts/:giftId/cards`           | edit token | `CardInputSchema`           | 423 `GIFT_LOCKED`; 402 `PREMIUM_REQUIRED` (`CARD_TYPE`, `MAX_CARDS`, published gifts only); 409 `CONFLICT` at `MAX_CARDS_HARD_LIMIT`; 400 foreign media                                  |
+| `PUT /gifts/:giftId/cards/order`      | edit token | `ReorderCardsRequestSchema` | 423 `GIFT_LOCKED`; 400 unless the list holds every card of the gift exactly once                                                                                                         |
+| `PATCH /gifts/:giftId/cards/:cardId`  | edit token | `CardInputSchema`           | 423 `GIFT_LOCKED`; 404 unknown card; 400 if the card type changes; 400 foreign media                                                                                                     |
+| `DELETE /gifts/:giftId/cards/:cardId` | edit token | —                           | 423 `GIFT_LOCKED`; 404 unknown card; 422 `GIFT_INCOMPLETE` removing the last card of a published gift                                                                                    |
 
 `GIFT_LOCKED` details follow `GiftLockedDetailsSchema`: `scope` is `RECIPIENT_NAME` (a published gift
 changing that name) or `GIFT` (the correction window is over and the request holds no editing session).
@@ -43,9 +42,9 @@ delivery").
 
 ## public gifts: `apps/api/src/modules/gifts/public-gifts.controller.ts`
 
-| Method and path           | Auth | Response     | Notable errors                                                                                                                                                                                               |
-| ------------------------- | ---- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /public/gifts/:slug` | none | `PublicGift` | 404 for an unknown slug, a draft and an expired gift. Aliases also match 429 `RATE_LIMITED` (details `retryAfterSeconds`) for every lookup of a client that got `LINK_LOOKUP_MISS_LIMIT` 404s in ten minutes |
+| Method and path                                                | Auth | Response     | Notable errors                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------- | ---- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /public/gifts/:code`, `GET /public/gifts/:code/for/:name` | none | `PublicGift` | The two shapes of a link. 404 for an unknown link, a draft and an expired gift; also, without counting as a miss, for an address that is not the shape of a link. Aliases also match. 429 `RATE_LIMITED` (details `retryAfterSeconds`) for every lookup of a client that got `LINK_LOOKUP_MISS_LIMIT` counted 404s in ten minutes |
 
 ## media: `apps/api/src/modules/media/media.controller.ts`
 
@@ -96,6 +95,8 @@ Multipart, one file in field `file`. Both return `MediaUploadResponse`.
 ## Decisions
 
 - 2026-11-24: the availability check is `GET /gifts/check-slug` (it replaced `GET /gifts/slug-availability`).
+- 2026-11-27: `GET /gifts/check-slug` is removed: the API draws the code of custom links, so no link is
+  ever asked about.
 - 2026-11-24: deletion stays `DELETE /gifts/:giftId` with the edit token in the header; no endpoint takes the
   token in its path.
 

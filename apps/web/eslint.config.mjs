@@ -32,7 +32,7 @@ export default defineConfig([
   ...nextTs,
   {
     files: [
-      'src/app/for/**/*.{ts,tsx}',
+      'src/app/(gift)/**/*.{ts,tsx}',
       'src/features/gift-experience/**/*.{ts,tsx}',
       'src/features/gift-reveal/**/*.{ts,tsx}',
     ],

@@ -5,23 +5,17 @@ import {
   checkRevealTemplate,
   type CreateGiftRequest,
   type CreateGiftResponse,
-  CustomSlugSchema,
+  CustomNameSchema,
   draftExpiry,
   freeGiftExpiry,
   type GiftEditorView,
   type GiftLockedDetails,
-  joinSlug,
   MAX_CARDS_HARD_LIMIT,
   planOf,
   type PlanCheck,
   proFeaturesOf,
   type PublicGift,
-  randomSlugSuffix,
-  RESERVED_SLUGS,
-  type SlugAvailability,
-  SLUG_SUGGESTION_COUNT,
-  SlugSchema,
-  splitSlug,
+  parseLink,
   type UpdateGiftRequest,
 } from '@remember-me/shared-types';
 import { GiftGrantService } from '../../shared/auth/gift-grant.service.js';
@@ -41,12 +35,10 @@ import {
   toPublicGift,
 } from './gift.mapper.js';
 import { MediaUrlPolicy } from './media-url-policy.js';
-import { generateSlug } from './slug-generator.js';
+import { generateCustomLink, generateSlug } from './slug-generator.js';
 
 const WITH_CARDS = { cards: true } as const;
 const SLUG_ATTEMPTS = 5;
-/** Candidates tried to find `SLUG_SUGGESTION_COUNT` free links. */
-const SUGGESTION_ATTEMPTS = 12;
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -86,20 +78,14 @@ function planApplies(gift: GiftWithCards): boolean {
 }
 
 /**
- * The link is fixed on first publication, so that it can carry the recipient's name: `slug` is the
- * new generated link, or `null` to keep the one the creator chose. A free gift is kept for a
- * limited time; a paid one never expires.
+ * Publishing keeps the link the gift was created with. A free gift is kept for a limited time; a
+ * paid one never expires.
  */
-function publishData(
-  gift: Pick<GiftWithCards, 'isPremium'>,
-  slug: string | null,
-  now = new Date(),
-) {
+function publishData(gift: Pick<GiftWithCards, 'isPremium'>, now = new Date()) {
   return {
     status: 'PUBLISHED' as const,
     publishedAt: now,
     expiresAt: gift.isPremium ? null : freeGiftExpiry(now),
-    ...(slug === null ? {} : { slug }),
   };
 }
 
@@ -117,7 +103,7 @@ export class GiftsService {
     const gift = await this.withSlugRetry(async () =>
       this.prisma.gift.create({
         data: {
-          slug: await this.freeGeneratedSlug(this.prisma, ''),
+          slug: await this.freeGeneratedSlug(this.prisma),
           editTokenHash: hash,
           locale: request.locale,
           // A draft nobody publishes is deleted, which frees its files and its link.
@@ -302,10 +288,7 @@ export class GiftsService {
         }
         return tx.gift.update({
           where: { id: giftId },
-          data: publishData(
-            gift,
-            gift.slugIsCustom ? null : await this.freeGeneratedSlug(tx, gift.recipientName, giftId),
-          ),
+          data: publishData(gift),
           include: WITH_CARDS,
         });
       }),
@@ -313,32 +296,32 @@ export class GiftsService {
     return this.view(published, access);
   }
 
-  /** Lets the creator pick the custom link they paid for when the first choice was taken. */
-  async changeSlug(giftId: string, access: EditAccess, slug: string): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, access);
-    if (!gift.customSlugPending) {
-      throw new AppError('PREMIUM_REQUIRED', 'A custom link is a paid extra', {
-        capability: 'CUSTOM_SLUG',
-      });
-    }
-    try {
-      const updated = await this.prisma.$transaction(async (tx) => {
+  /**
+   * Gives the gift the custom link that was paid for but could not be applied, with the name the
+   * creator chooses now. The code in front of it is drawn here.
+   */
+  async changeSlug(giftId: string, access: EditAccess, name: string): Promise<GiftEditorView> {
+    await this.authorize(giftId, access);
+    const updated = await this.withSlugRetry(() =>
+      this.prisma.$transaction(async (tx) => {
+        // Checked under the lock: of two requests sent at once only the first finds the link
+        // still to be chosen, so one payment never gives a gift two custom links.
         const current = await this.lock(tx, giftId);
-        if (!(await this.slugIsFree(tx, slug, giftId))) {
-          throw new AppError('SLUG_TAKEN', 'This link is already taken');
+        if (!current.customSlugPending) {
+          throw new AppError('PREMIUM_REQUIRED', 'A custom link is a paid extra', {
+            capability: 'CUSTOM_SLUG',
+          });
         }
+        const slug = await this.freeCustomLink(tx, name);
         await this.keepOldLink(tx, current, slug);
         return tx.gift.update({
           where: { id: giftId },
           data: { slug, slugIsCustom: true, customSlugPending: false },
           include: WITH_CARDS,
         });
-      });
-      return this.view(updated, access);
-    } catch (error) {
-      if (isUniqueViolation(error)) throw new AppError('SLUG_TAKEN', 'This link is already taken');
-      throw error;
-    }
+      }),
+    );
+    return this.view(updated, access);
   }
 
   async remove(giftId: string, access: EditAccess): Promise<void> {
@@ -347,36 +330,6 @@ export class GiftsService {
     // the gift still exists, so the creator can simply try again and nothing is left behind.
     await this.events.publish(GiftDeletedEvent, { giftId });
     await this.prisma.gift.deleteMany({ where: { id: giftId } });
-  }
-
-  /**
-   * Whether a custom link can be taken. For a taken one it proposes free links with the same name
-   * and another ending. Advisory: the real check happens under the lock when the link is applied.
-   */
-  async checkSlug(slug: string): Promise<SlugAvailability> {
-    const refused = (reason: NonNullable<SlugAvailability['reason']>): SlugAvailability => ({
-      slug,
-      available: false,
-      reason,
-      suggestions: [],
-    });
-    const parts = SlugSchema.safeParse(slug).success ? splitSlug(slug) : null;
-    if (!parts) return refused('INVALID');
-    if (RESERVED_SLUGS.includes(parts.base)) return refused('RESERVED');
-    if (await this.slugIsFree(this.prisma, slug)) return { slug, available: true, suggestions: [] };
-
-    const suggestions: string[] = [];
-    for (
-      let attempt = 0;
-      attempt < SUGGESTION_ATTEMPTS && suggestions.length < SLUG_SUGGESTION_COUNT;
-      attempt += 1
-    ) {
-      const candidate = joinSlug(parts.base, randomSlugSuffix());
-      if (!suggestions.includes(candidate) && (await this.slugIsFree(this.prisma, candidate))) {
-        suggestions.push(candidate);
-      }
-    }
-    return { ...refused('TAKEN'), suggestions };
   }
 
   async getPublic(slug: string, now = new Date()): Promise<PublicGift> {
@@ -395,8 +348,8 @@ export class GiftsService {
   }
 
   /**
-   * Applies a confirmed payment: premium, no expiry, the buyer's email, the custom link if one was
-   * bought, and publication when the gift is ready. Running it again for the same order changes
+   * Applies a confirmed payment: premium, no expiry, the buyer's email, a custom link with the name
+   * that was bought (`customSlug` is that name), and publication when the gift is ready. Running it again for the same order changes
    * nothing.
    */
   async applyPayment(
@@ -413,14 +366,16 @@ export class GiftsService {
         if (!gift) return false;
         if (gift.appliedOrderIds.includes(orderId)) return true;
 
-        // Buying the link the gift already has simply makes it permanent.
-        const keepsCurrentSlug = customSlug !== null && customSlug === gift.slug;
-        const wantsCustomSlug = customSlug !== null && !keepsCurrentSlug;
-        const slugFree =
-          wantsCustomSlug &&
-          CustomSlugSchema.safeParse(customSlug).success &&
-          (await this.slugIsFree(tx, customSlug, giftId));
-        if (slugFree) await this.keepOldLink(tx, gift, customSlug);
+        // The buyer chose the name; the code in front of it is drawn here. A gift whose link
+        // already has that name keeps it: a second order must not move the gift.
+        const name =
+          customSlug !== null && CustomNameSchema.safeParse(customSlug).success ? customSlug : null;
+        const hasIt = name !== null && gift.slugIsCustom && parseLink(gift.slug)?.name === name;
+        const link = name !== null && !hasIt ? await this.freeCustomLink(tx, name) : null;
+        if (link) await this.keepOldLink(tx, gift, link);
+        // A name that cannot be used (only possible if the order did not come from the checkout):
+        // the upgrade is kept and the creator chooses another name.
+        const refusedName = customSlug !== null && name === null;
 
         await tx.gift.update({
           where: { id: giftId },
@@ -430,18 +385,11 @@ export class GiftsService {
             // A paid gift is kept for good.
             expiresAt: null,
             ...(customerEmail ? { customerEmail } : {}),
-            ...(keepsCurrentSlug ? { slugIsCustom: true, customSlugPending: false } : {}),
-            ...(slugFree
-              ? { slug: customSlug, slugIsCustom: true, customSlugPending: false }
-              : // Someone took the link between checkout and payment: the creator picks another.
-                { customSlugPending: wantsCustomSlug ? true : gift.customSlugPending }),
+            ...(link
+              ? { slug: link, slugIsCustom: true, customSlugPending: false }
+              : { customSlugPending: refusedName ? true : gift.customSlugPending }),
             ...(gift.status === 'DRAFT' && missingToPublish(gift).length === 0
-              ? publishData(
-                  { isPremium: true },
-                  gift.slugIsCustom || slugFree || keepsCurrentSlug
-                    ? null
-                    : await this.freeGeneratedSlug(tx, gift.recipientName, giftId),
-                )
+              ? publishData({ isPremium: true })
               : {}),
           },
         });
@@ -518,14 +466,19 @@ export class GiftsService {
    * (aliases), so a new gift must never be given one of them: a QR code printed for someone else
    * would open it. The links of a deleted gift are free again.
    */
-  private async freeGeneratedSlug(
-    db: Prisma.TransactionClient | PrismaService,
-    recipientName: string,
-    forGiftId?: string,
-  ): Promise<string> {
+  private async freeGeneratedSlug(db: Prisma.TransactionClient | PrismaService): Promise<string> {
     for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt += 1) {
-      const slug = generateSlug(recipientName);
-      if (await this.slugIsFree(db, slug, forGiftId)) return slug;
+      const slug = generateSlug();
+      if (await this.slugIsFree(db, slug)) return slug;
+    }
+    throw new AppError('INTERNAL', 'Could not generate a free link');
+  }
+
+  /** A custom link with this name that nobody has: the name stays, the code is drawn until free. */
+  private async freeCustomLink(db: Prisma.TransactionClient, name: string): Promise<string> {
+    for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt += 1) {
+      const slug = generateCustomLink(name);
+      if (await this.slugIsFree(db, slug)) return slug;
     }
     throw new AppError('INTERNAL', 'Could not generate a free link');
   }

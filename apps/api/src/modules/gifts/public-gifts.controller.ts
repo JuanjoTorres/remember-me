@@ -1,5 +1,5 @@
 import { Controller, Get, Ip, Param } from '@nestjs/common';
-import type { PublicGift } from '@remember-me/shared-types';
+import { customLink, GiftLinkSchema, type PublicGift } from '@remember-me/shared-types';
 import { AppError } from '../../shared/http/app-error.js';
 import { GiftsService } from './gifts.service.js';
 import { LinkGuessGuard } from './link-guess-guard.js';
@@ -12,9 +12,27 @@ export class PublicGiftsController {
     private readonly guesses: LinkGuessGuard,
   ) {}
 
-  @Get(':slug')
-  async get(@Param('slug') slug: string, @Ip() client: string): Promise<PublicGift> {
+  /** A generated link: `kardoo.me/x9k2bd7m`. */
+  @Get(':code')
+  generated(@Param('code') code: string, @Ip() client: string): Promise<PublicGift> {
+    return this.open(code, client);
+  }
+
+  /** A custom link: `kardoo.me/7k2m/for/ana-luis`. */
+  @Get(':code/for/:name')
+  custom(
+    @Param('code') code: string,
+    @Param('name') name: string,
+    @Ip() client: string,
+  ): Promise<PublicGift> {
+    return this.open(customLink(code, name), client);
+  }
+
+  private async open(slug: string, client: string): Promise<PublicGift> {
     this.guesses.assertMayOpen(client);
+    // Not even the shape of a link (a mistyped page, a crawler asking for a file): it is no guess
+    // at a gift, so it is not held against the visitor, and no gift is looked up.
+    if (!GiftLinkSchema.safeParse(slug).success) throw new AppError('NOT_FOUND', 'Gift not found');
     try {
       return await this.gifts.getPublic(slug);
     } catch (error) {

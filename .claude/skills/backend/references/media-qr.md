@@ -74,7 +74,8 @@ keeps the gift (see `.claude/skills/backend/references/gifts.md`).
 | `apps/api/src/modules/qr/qr.service.ts`    | `targetUrl`, `render`                  |
 
 - Stateless: everything comes from the grant claims (`slug`, `plan`, `published`) and `WEB_ORIGIN`.
-- The code encodes `WEB_ORIGIN` + "/for/" + slug (`QrService.targetUrl`). The same URL is built
+- The code encodes `WEB_ORIGIN` + "/" + slug (`QrService.targetUrl`); the slug is the path of the link.
+  The file name replaces the slashes of a custom link with hyphens. The same URL is built
   independently by `publicUrlOf` in `apps/api/src/modules/gifts/gift.mapper.ts`; keep them equal.
 - An unpublished gift gets `CONFLICT`: the link is only final after publication.
 - Formats per plan come from `checkQrFormat` (`qrFormats` in `PLAN_CAPABILITIES`); a format the plan lacks

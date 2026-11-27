@@ -67,16 +67,13 @@ export function PremiumUpgradeSheet({
   const total = prices.data
     ? prices.data.premium.amount + (includeSlug ? prices.data.customSlug.amount : 0)
     : null;
-  const slugBlocksPayment = includeSlug && slugState !== 'available' && slugState !== 'unchecked';
+  const slugBlocksPayment = includeSlug && slugState !== 'valid';
 
   async function pay() {
     setError(null);
     setPaying(true);
     try {
-      // The field has already checked the link, or could not (the creator ran out of checks):
-      // asking again here would spend another check and make the payment fail with it. A link
-      // taken in the meantime is not lost money: the gift is upgraded and the creator picks
-      // another link afterwards (`customSlugPending`).
+      // Only the name is sent: the server puts a code in front of it when the payment arrives.
       const customSlug = includeSlug ? slug : undefined;
       const origin = window.location.origin;
       const session = await withGrant((grant) =>

@@ -13,7 +13,7 @@ All rules live in `apps/api/src/modules/gifts/gifts.service.ts` unless another f
 | `apps/api/src/modules/gifts/gifts.service.ts`                | Every rule below                                           |
 | `apps/api/src/modules/gifts/gift.mapper.ts`                  | Rows to `GiftEditorView` and `PublicGift`; `publicUrlOf`   |
 | `apps/api/src/modules/gifts/edit-token.ts`                   | Token generation, hashing, constant-time comparison        |
-| `apps/api/src/modules/gifts/slug-generator.ts`               | `generateSlug`                                             |
+| `apps/api/src/modules/gifts/slug-generator.ts`               | `generateSlug`, `generateCustomLink`                       |
 | `apps/api/src/modules/gifts/link-guess-guard.ts`             | `LinkGuessGuard`: stops links being found by trying them   |
 | `apps/api/src/modules/gifts/media-url-policy.ts`             | `MediaUrlPolicy`: which media URLs a gift may reference    |
 | `apps/api/src/modules/gifts/payment-succeeded.subscriber.ts` | Subscribes to `payment.succeeded` and calls `applyPayment` |
@@ -39,44 +39,51 @@ token cannot be rotated or recovered.
 
 ## Slugs
 
-- Every link ends with a hyphen and an ending of at least `SLUG_SUFFIX_MIN_LENGTH` letters or digits, so
-  that links do not collide and nobody opens a gift by trying common names.
-- Generated slugs (`generateSlug`): slugified recipient name (or "gift" when empty) joined with a random
-  ending of `GENERATED_SLUG_SUFFIX_LENGTH` characters (`randomSlugSuffix`, an alphabet without vowels or
-  look-alike characters, drawn without bias), within `SLUG_MAX_LENGTH`. The link is the only secret of a
-  gift, so this ending is long on purpose.
-- `freeGeneratedSlug` is the only way a generated slug is assigned (`create`, `publish`, `applyPayment`):
-  it draws until `slugIsFree` accepts the candidate, so a new gift never gets a link that is another
-  gift's alias. Without it the printed QR code of that other gift would open the new one.
-- Custom slugs must pass `CustomSlugSchema`: a name plus an ending, random or typed by the creator. The
-  reserved words are checked against the name without its ending.
-- A draft starts with a "gift-…" slug. On first publication `publishData` replaces it with one built from
-  the recipient name, unless `slugIsCustom` is true. After publication the link only changes to a custom
-  one.
+- Every link starts with a random code (`randomCode`: an alphabet without vowels or look-alike
+  characters, drawn without bias, always with a digit). A code is never a word and never the name of a
+  page of the site, and nothing about the gift can be worked out from it. The stored `slug` is the path of
+  the link without its leading slash.
+- Generated link: the code alone, `GIFT_CODE_LENGTH` characters ("x9k2bd7m", `kardoo.me/x9k2bd7m`). The
+  link is the only secret of a gift, so this code is long on purpose. A gift gets it in `create`
+  (`generateSlug`) and keeps it when it is published: it does not carry the recipient's name.
+- Custom link, a paid extra: a code of `CUSTOM_CODE_LENGTH` characters, then the name the creator
+  chose ("7k2m/for/ana-luis", `kardoo.me/7k2m/for/ana-luis`). The creator, the checkout and
+  `PUT /gifts/:giftId/slug` only ever send the name (`CustomNameSchema`: a `SlugSchema` name that is not
+  reserved). The code is drawn by the API when the link is given to the gift (`generateCustomLink` in
+  `freeCustomLink`, until `slugIsFree`): nobody picks a code, so nobody picks an easy one. The same name
+  can exist behind another code, so a name is never "taken" and there is nothing to check beforehand.
+- `freeGeneratedSlug` is the only way a generated link is assigned (`create`): it draws until
+  `slugIsFree` accepts the candidate, so a new gift never gets a link that is another gift's alias.
+  Without it the printed QR code of that other gift would open the new one.
 - `withSlugRetry` reruns a write that hit a unique violation on the slug, up to `SLUG_ATTEMPTS` times.
-- Custom slug: bought as an order bump and applied in `applyPayment`, or chosen later with `changeSlug`,
-  which is only allowed while `customSlugPending` is true (otherwise `PREMIUM_REQUIRED` with
-  `CUSTOM_SLUG`). Both set `slugIsCustom` and clear `customSlugPending`.
+- A custom link is applied in `applyPayment` (bought as an order bump; `customSlug` in the order and in
+  the event is the name), or with `changeSlug`, which is only allowed while `customSlugPending` is true
+  (otherwise `PREMIUM_REQUIRED` with `CUSTOM_SLUG`); `changeSlug` reads the flag under the row lock, so
+  two requests sent at once give one link, not two. Both set `slugIsCustom` and clear
+  `customSlugPending`. `customSlugPending` is only set when a paid name cannot be used, which the
+  checkout's validation normally rules out.
 - `slugIsFree`: no gift has the slug and no other gift has it as an alias.
-- Aliases (`keepOldLink`): when a published gift changes its slug, the old one is stored in
-  `gift_slug_aliases` so printed QR codes keep working. Going back to a former slug removes that alias.
+- Aliases (`keepOldLink`): when a published gift changes its link, the old one is stored in
+  `gift_slug_aliases` so printed QR codes keep working. Going back to a former link removes that alias.
   `getPublic` looks up the slug, then the aliases.
-- `checkSlug` answers `INVALID` (also for a link without a valid ending), `RESERVED` or `TAKEN`. For a
-  taken link it returns up to `SLUG_SUGGESTION_COUNT` free links with the same name and another random
-  ending. It is advisory: the real check happens under the lock when the slug is applied.
+- The public lookup has one route per shape (`public-gifts.controller.ts`): `GET /public/gifts/:code` and
+  `GET /public/gifts/:code/for/:name`.
 
 ## Guessing links (`LinkGuessGuard`)
 
-Whoever has a link can open the gift, so links must not be found by trying addresses. Two budgets per
-client IP, each over `LINK_GUESS_WINDOW_MS`, both answering `RATE_LIMITED` with
-`details.retryAfterSeconds` once used up:
+Whoever has a link can open the gift, so links must not be found by trying addresses. One budget per
+client IP, over `LINK_GUESS_WINDOW_MS`, answering `RATE_LIMITED` with `details.retryAfterSeconds` once
+used up:
 
-- `GET /public/gifts/:slug`: every answer that is `NOT_FOUND` (unknown link, draft, expired gift) counts
+- The public lookup: an address that is not even the shape of a link (`GiftLinkSchema`: a mistyped
+  page, a crawler asking for a file) is answered `NOT_FOUND` without looking anything up and without
+  counting. Every other answer that is `NOT_FOUND` (unknown link, draft, expired gift) counts
   as a miss. After `LINK_LOOKUP_MISS_LIMIT` misses every lookup of that client is refused until the window
   ends, also for links that exist: a refusal must not reveal anything. Links that exist never count, so a
   QR code can be opened any number of times.
-- `GET /gifts/check-slug`: every call counts, free or taken, up to `SLUG_CHECK_LIMIT`, because the answer
-  itself says whether a link exists.
+
+No endpoint tells whether a link exists (the availability check and its budget were removed on
+2026-11-27, when the API started to draw the code of custom links).
 
 The counters are `AttemptLimiter` (`apps/api/src/shared/http/attempt-limiter.ts`): in memory, per API
 instance, like the request throttler; when its table is full it drops the clients that are not blocked
@@ -124,7 +131,7 @@ published gift refuses a different `recipientName`; a reveal template is checked
 reveal headline (`REVEAL_HEADLINE`). `publish` checks it under the lock and answers `GIFT_INCOMPLETE` with
 `details.missing`; it is a no-op for an already published gift (a double tap keeps the same link); then
 comes the paywall above. A FREE gift without paid features is published free. `publishData` sets
-`status`, `publishedAt`, `expiresAt` and, unless the slug is custom, the link named after the recipient.
+`status`, `publishedAt` and `expiresAt`; the link stays the one the gift already had.
 The public view carries `watermark` from the plan.
 
 ## Locking after delivery
@@ -219,9 +226,10 @@ under the gift lock:
   idempotent for repeated and out-of-order deliveries. It must stay the first check after the lock.
 - Otherwise: set `isPremium`, clear `expiresAt`, store `customerEmail` when the event carries one (an
   event without it never erases a stored address), append the order id, and
-  - custom slug equal to the current slug: just mark it custom;
-  - custom slug valid (`CustomSlugSchema`) and free: keep the old link as alias, apply it;
-  - custom slug invalid or taken: keep the upgrade and set `customSlugPending` so the creator picks
+  - a custom name the gift's link already has: nothing changes;
+  - a valid custom name (`CustomNameSchema`): draw a free link for it, keep the old link as alias,
+    apply it;
+  - a name that is not valid: keep the upgrade and set `customSlugPending` so the creator chooses
     another one for free;
   - if the gift is a draft that is ready, publish it in the same write (`publishData`). An unfinished
     draft is upgraded but stays a draft.
@@ -267,6 +275,15 @@ retry. Cards and aliases go with the gift (cascade). Payment orders are kept.
   request, there is no absolute limit, and a reload of the page ends it. All three await the owner.)
 - 2026-11-27: free gifts are kept 3 months from publication, not a year (replaces the figure of
   2026-11-24). Paid gifts never expire.
+- 2026-11-27 (replaces the link format of 2026-11-24): the code goes in front. A generated link is the
+  code alone; a custom link is a short code chosen by the system followed by `/for/` and the name the
+  creator chose, so that what was paid for ends the address. Every code has a digit. The owner first
+  proposed a code derived from the time of creation and settled on a random one, which cannot be worked
+  out. Links in the old format stop working: there was no production yet.
+- 2026-11-27: the code of a custom link is drawn by the API, never sent by a client. The creator sends
+  only the name; `GET /gifts/check-slug`, its budget (`SLUG_CHECK_LIMIT`) and the error `SLUG_TAKEN` are
+  gone, since any valid name can be had. The address is shown with the code still to come until the
+  payment arrives.
 - 2026-11-27: the anniversary email is switched off and recorded as technical debt (section above).
 - 2026-11-27: there is no production yet, only staging. A deployment that deletes old staging gifts (the
   expiry backfill of `20261124210813_gift_lifecycle`) needs no precaution.

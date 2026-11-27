@@ -38,7 +38,8 @@ function toLocale(value: string): Locale {
 }
 
 export function publicUrlOf(webOrigin: string, slug: string): string {
-  return `${webOrigin}/for/${slug}`;
+  // The stored slug is the path of the link: "x9k2bd7m" or "7k2m/for/ana-luis".
+  return `${webOrigin}/${slug}`;
 }
 
 /** End of the correction window. `null` while the gift is a draft that nobody locked. */

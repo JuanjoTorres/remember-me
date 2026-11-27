@@ -14,7 +14,6 @@ vi.mock('@/features/checkout/api', () => ({
     premium: { amount: 499, currency: 'eur' },
     customSlug: { amount: 199, currency: 'eur' },
   }),
-  checkSlug: vi.fn(),
   createCheckoutSession: vi.fn(),
 }));
 vi.mock('../api');
@@ -361,7 +360,7 @@ describe('GiftEditor', () => {
       await renderEditor(published());
       expect(await screen.findByRole('img', { name: 'QR code of your gift' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Download QR' })).toBeInTheDocument();
-      expect(screen.getByText('kardoo.me/for/gift-x9k2')).toBeInTheDocument();
+      expect(screen.getByText('kardoo.me/x9k2bd7m')).toBeInTheDocument();
     });
   });
 
@@ -503,6 +502,41 @@ describe('GiftEditor', () => {
       await userEvent.click(zone.getByRole('button', { name: 'Delete forever' }));
       expect(await zone.findByRole('alert')).toHaveTextContent('could not be deleted');
       expect(push).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a paid custom link that could not be applied', () => {
+    const pending = () => published({ plan: 'PREMIUM', customSlugPending: true });
+
+    it('lets the creator choose another name, and sends only the name', async () => {
+      const gift = pending();
+      const api = await renderEditor(gift);
+      api.changeSlug.mockResolvedValue({
+        ...gift,
+        slug: '7k2m/for/nuestro-viaje',
+        customSlugPending: false,
+      });
+      const save = screen.getByRole('button', { name: 'Use this link' });
+      expect(save).toBeDisabled();
+
+      await userEvent.type(screen.getByRole('textbox', { name: 'Custom link' }), 'Nuestro viaje');
+      expect(screen.getByTestId('slug-preview')).toHaveTextContent(
+        'kardoo.me/····/for/nuestro-viaje',
+      );
+      await userEvent.click(save);
+      expect(api.changeSlug).toHaveBeenCalledExactlyOnceWith('nuestro-viaje');
+      await vi.waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Use this link' })).not.toBeInTheDocument(),
+      );
+    });
+
+    it('says so when the name could not be saved, and keeps the choice open', async () => {
+      const api = await renderEditor(pending());
+      api.changeSlug.mockRejectedValue(new Error('offline'));
+      await userEvent.type(screen.getByRole('textbox', { name: 'Custom link' }), 'nuestro-viaje');
+      await userEvent.click(screen.getByRole('button', { name: 'Use this link' }));
+      expect(await screen.findByText('That name could not be saved. Try again.')).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Use this link' })).toBeEnabled();
     });
   });
 });

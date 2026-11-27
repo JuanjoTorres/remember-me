@@ -1,6 +1,7 @@
 # The recipient story (`gift-experience`)
 
-Read this before touching what a recipient sees at `/for/[slug]` up to the surprise: loading the gift, the
+Read this before touching what a recipient sees at a gift's link (`/[code]`, or `/[code]/for/[name]` for a
+custom link) up to the surprise: loading the gift, the
 cover, the cards, navigation, audio, preloading.
 
 This is the critical path: a phone that scanned a QR code. It must stay small and must not show a loading
@@ -8,19 +9,23 @@ state between cards.
 
 ## Flow
 
-1. `apps/web/src/app/for/[slug]/page.tsx` (server) calls `getPublicGift(slug)`; `null` means `notFound()`.
+1. Both gift routes (`apps/web/src/app/(gift)/[code]/page.tsx` and
+   `apps/web/src/app/(gift)/[code]/for/[name]/page.tsx`) render `GiftPage`
+   (`apps/web/src/features/gift-experience/GiftPage.tsx`, server) with their params. It calls
+   `getPublicGift(link)`; `null` means `notFound()`.
 2. It calls `experienceLabels(gift)` and renders `GiftExperience` with `gift` and `labels`.
 3. `GiftExperience` (client) walks the steps: cover, one step per card, reveal.
 4. The reveal step renders `Reveal` from `apps/web/src/features/gift-reveal/Reveal.tsx`.
 
 ## Loading on the server (`apps/web/src/features/gift-experience/get-public-gift.ts`)
 
-- Fetches `GET /public/gifts/:slug` from `getServerEnv().INTERNAL_API_URL` with `cache: 'no-store'`.
+- Takes the link as `{ code, name? }` and fetches `GET /public/gifts/:code` or
+  `GET /public/gifts/:code/for/:name` from `getServerEnv().INTERNAL_API_URL` with `cache: 'no-store'`.
   It uses `fetch` directly, not the shared API client.
 - Wrapped in React `cache`, so `generateMetadata` and the page share one request.
 - Forwards the first address of the incoming `x-forwarded-for` header as `X-Forwarded-For`, so the API rate
   limits per visitor and not per web server.
-- 404 returns `null`; any other failure throws and ends in `apps/web/src/app/for/error.tsx`.
+- 404 returns `null`; any other failure throws and ends in `apps/web/src/app/(gift)/error.tsx`.
 - The result is typed as `PublicGift` (`packages/shared-types/src/gifts.ts`) without runtime validation.
 
 ## Labels (`apps/web/src/features/gift-experience/labels.ts`)

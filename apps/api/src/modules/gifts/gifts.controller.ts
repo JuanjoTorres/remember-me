@@ -6,13 +6,11 @@ import {
   type ExecutionContext,
   Get,
   HttpCode,
-  Ip,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Put,
-  Query,
 } from '@nestjs/common';
 import {
   type CardInput,
@@ -27,14 +25,11 @@ import {
   type GiftEditorView,
   type ReorderCardsRequest,
   ReorderCardsRequestSchema,
-  type SlugAvailability,
   type UpdateGiftRequest,
   UpdateGiftRequestSchema,
 } from '@remember-me/shared-types';
-import { z } from 'zod';
 import { ZodPipe } from '../../shared/http/zod.pipe.js';
 import { type EditAccess, GiftsService } from './gifts.service.js';
-import { LinkGuessGuard } from './link-guess-guard.js';
 
 const GiftId = () => Param('giftId', new ParseUUIDPipe());
 /** What the request presents: the edit token and, when the editor sends it back, its last grant. */
@@ -52,26 +47,13 @@ const Access = createParamDecorator((_: unknown, context: ExecutionContext): Edi
 /** Editor endpoints. Everything except creation needs the gift's edit token. */
 @Controller('gifts')
 export class GiftsController {
-  constructor(
-    private readonly gifts: GiftsService,
-    private readonly guesses: LinkGuessGuard,
-  ) {}
+  constructor(private readonly gifts: GiftsService) {}
 
   @Post()
   create(
     @Body(new ZodPipe(CreateGiftRequestSchema)) body: CreateGiftRequest,
   ): Promise<CreateGiftResponse> {
     return this.gifts.create(body);
-  }
-
-  @Get('check-slug')
-  checkSlug(
-    @Query('slug', new ZodPipe(z.string().max(200))) slug: string,
-    @Ip() client: string,
-  ): Promise<SlugAvailability> {
-    // The answer says whether a link exists, so it must not be a way to look for gifts.
-    this.guesses.countCheck(client);
-    return this.gifts.checkSlug(slug);
   }
 
   @Get(':giftId')
@@ -106,7 +88,7 @@ export class GiftsController {
     @Body(new ZodPipe(ChangeSlugRequestSchema)) body: ChangeSlugRequest,
     @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.changeSlug(giftId, access, body.slug);
+    return this.gifts.changeSlug(giftId, access, body.name);
   }
 
   @Post(':giftId/cards')

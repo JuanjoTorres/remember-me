@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CustomSlugSchema } from './slug.js';
+import { CustomNameSchema } from './slug.js';
 
 const redirectUrl = z.url({ protocol: /^https?$/ }).max(500);
 
@@ -8,12 +8,13 @@ export const CheckoutSessionRequestSchema = z
     giftId: z.uuid(),
     /** Order bump: buy a custom link together with the full experience. */
     includeCustomSlug: z.boolean().default(false),
-    customSlug: CustomSlugSchema.optional(),
+    /** The name of the custom link ("ana-luis"). The code in front of it is not the buyer's to choose. */
+    customSlug: CustomNameSchema.optional(),
     successUrl: redirectUrl,
     cancelUrl: redirectUrl,
   })
   .refine((request) => !request.includeCustomSlug || request.customSlug !== undefined, {
-    message: 'Choose the custom link',
+    message: 'Choose the name of the custom link',
     path: ['customSlug'],
   });
 export type CheckoutSessionRequest = z.infer<typeof CheckoutSessionRequestSchema>;

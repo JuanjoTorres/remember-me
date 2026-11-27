@@ -96,8 +96,8 @@ How to check a dump by restoring it into a scratch database is in
 - **Anniversary email:** switched off for now (technical debt). The API schedules no email job, so
   `MAIL_DRIVER` stays `log` and no mail provider has to be set up.
 - **Guessing links:** a client that opens 30 links leading to no gift within ten minutes is refused every
-  gift for the rest of those ten minutes, and the link availability check allows 60 calls per ten minutes
-  (`LINK_LOOKUP_MISS_LIMIT`, `SLUG_CHECK_LIMIT`, per client IP, in memory per API instance). Many people
+  gift for the rest of those ten minutes (`LINK_LOOKUP_MISS_LIMIT`, per client IP, in memory per API
+  instance). Many people
   behind one shared address count as one client.
 - **Rate limits:** `RATE_LIMIT_PER_MINUTE`, `GIFT_CREATION_LIMIT_PER_HOUR` (per client IP). Counters are in
   memory, per API instance.

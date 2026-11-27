@@ -10,7 +10,7 @@ optional trivia question, ending in an interactive surprise reveal.
 
 - **Creator:** builds the gift on their phone, without signing up. Pays once per gift if they want the full
   experience. Their email is captured by Stripe Checkout.
-- **Recipient:** scans the QR code and opens `/for/[slug]` on a phone. No account, no app install.
+- **Recipient:** scans the QR code and opens the gift's link on a phone. No account, no app install.
 
 ## v1 flows
 
@@ -30,7 +30,7 @@ optional trivia question, ending in an interactive surprise reveal.
 5. **Payment return** (`/create/[giftId]/success`): polls the gift until the webhook has been processed,
    which also publishes it, then shows the final QR download (SVG/PNG). The creator does not go back
    through the editor.
-6. **Experience the gift** (`/for/[slug]`): full-screen stories, background preload of the next cards' media,
+6. **Experience the gift** (`/[code]`, or `/[code]/for/[name]` for a custom link): full-screen stories, background preload of the next cards' media,
    optional trivia, then the reveal (scratch card, ticket or gift box) with confetti. Never indexed.
 7. **After delivery:** publishing fixes the recipient's name. Typos and photos can be corrected for 48
    hours; after that the edit link opens the gift locked, so that it cannot be reused for someone else
@@ -59,11 +59,11 @@ whether it must be paid for. A draft that is never published is deleted 7 days a
 Order bump `CUSTOM_SLUG` (e.g. +1.99 €): the creator chooses the name in the link instead of the
 generated one. Only available together with PREMIUM in the same checkout.
 
-Every link ends with a code: 8 random characters for generated links (`laura-x9k2bd7m`), and at least 4,
-random or typed by the creator, for custom ones (`laura-x9k2`). It avoids collisions and keeps a gift from
-being found by trying names. Trying links is also throttled per client: a handful of links that lead
-nowhere, and every lookup of that client is refused for ten minutes. `GET /gifts/check-slug` reports availability and proposes three free alternatives for a
-taken link.
+Every link starts with a random code that always has a digit: 8 characters and nothing else for
+generated links (`x9k2bd7m`), and 4 characters, `/for/` and the name the creator chose for custom ones
+(`7k2m/for/laura`). The API draws the code; the creator only chooses the name. It keeps a gift from being
+found by trying names. Trying links is also throttled per client: a handful of links that lead nowhere,
+and every lookup of that client is refused for ten minutes. No endpoint tells whether a link exists.
 
 ## Non-goals for v1
 
@@ -110,10 +110,9 @@ taken link.
   - `GET /payments/prices`: amounts and currency of the two prices, read from Stripe and cached.
 - `gifts` subscribes to `PaymentSucceededEvent`: sets `isPremium = true`, removes the expiry, keeps the
   buyer's email, applies `customSlug`, publishes the gift. The handler is idempotent.
-- **Custom slug availability:** `payments` cannot ask `gifts` directly. The web checks availability with
-  `GET /gifts/check-slug` before checkout. If the slug was taken in the meantime, `gifts` keeps the
-  generated slug, still upgrades the gift and flags `customSlugPending` so the creator can pick another one
-  for free from the editor.
+- **Custom link:** the checkout carries only the name. `gifts` draws a free code for it when it applies
+  the payment, so a name is never taken; a name that cannot be used keeps the upgrade and flags
+  `customSlugPending` so the creator can choose another one for free from the editor.
 - `media`: image → WebP with sharp; audio M4A/MP3 stored as is; size and type limits; upload to
   S3-compatible storage. `qr`: PNG/SVG for the gift URL built from the public web origin.
 - Env validated with Zod at startup in `src/config/env.ts` of each app.
@@ -121,7 +120,7 @@ taken link.
 ## Frontend rules
 
 - `src/features/`: `gift-creator`, `gift-experience`, `gift-reveal`, `checkout`, `shared`.
-- `app/for/[slug]`: isolated full-screen layout (`100dvh`), no imports from `gift-creator`, `checkout` or
+- `app/(gift)`: isolated full-screen layout (`100dvh`), no imports from `gift-creator`, `checkout` or
   Stripe; enforced by a lint rule. Server-rendered fetch through `INTERNAL_API_URL`; the browser uses
   `NEXT_PUBLIC_API_URL`.
 - `usePreloadMedia` preloads the media of the following cards while the current one is shown.
@@ -153,6 +152,6 @@ Questions 2 and 4 were built as assumed below and still need the owner's confirm
    the three premium templates.
 3. Final prices and Stripe products are created by the account owner; 4.99 € and 1.99 € are examples.
 4. The project `CLAUDE.md` says the QR points to `https://remember.me[slug]`; this spec uses
-   `<web origin>/for/[slug]`, consistent with section 1 of the same file.
+   `<web origin>/<link>`, consistent with section 1 of the same file.
 5. The product was first called remember.me. That domain was not available, so the public brand is
    kardoo.me. `CLAUDE.md`, the repository and the package scope (`@remember-me/*`) keep the old name.

@@ -8,7 +8,7 @@ repository and the package scope (`@remember-me/*`) keep the project's first nam
 
 ## Layout
 
-- `apps/web`: Next.js app. Editor under `/create`, recipient experience under `/for/[slug]`.
+- `apps/web`: Next.js app. Editor under `/create`, recipient experience at the gift's link (`/[code]`, or `/[code]/for/[name]` for a custom link).
 - `apps/api`: NestJS modular monolith (`gifts`, `media`, `qr`, `payments`) on PostgreSQL.
 - `packages/shared-types`: Zod contracts shared by both, including the plan limits.
 - `docs/`: spec, plan, ADRs, phase summaries, research, dependency register.

@@ -19,7 +19,7 @@ Everything is re-exported from `packages/shared-types/src/index.ts`. A new file 
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared-types/src/plans.ts`     | `PlanSchema`, `CardTypeSchema`, `RevealTemplateSchema`, `QrFormatSchema`, `PlanCapabilitiesSchema`, `PLAN_CAPABILITIES`, `MAX_CARDS_HARD_LIMIT`, `planOf`, `PremiumCapabilitySchema`, `PlanCheck`, `checkAddCard`, `checkRevealTemplate`, `checkQrFormat`, `ProFeatureSchema`, `proFeaturesOf`                                                  |
 | `packages/shared-types/src/gifts.ts`     | `LocaleSchema`, `GiftStatusSchema`, `CARD_TEXT_MAX`, the three card payload schemas, `CardInputSchema`, `CardSchema`, `ReorderCardsRequestSchema`, `RevealSchema`, `CreateGiftRequestSchema`, `UpdateGiftRequestSchema`, `ChangeSlugRequestSchema`, `GiftEditorViewSchema`, `CreateGiftResponseSchema`, `PublicGiftSchema`, `EDIT_TOKEN_HEADER` |
-| `packages/shared-types/src/slug.ts`      | `SLUG_MIN_LENGTH`, `SLUG_MAX_LENGTH`, `RESERVED_SLUGS`, `SlugSchema`, `CustomSlugSchema`, `slugify`, `SlugAvailabilitySchema`, `GENERATED_SLUG_SUFFIX_LENGTH`, `SLUG_SUFFIX_LENGTH`, `SLUG_SUFFIX_MIN_LENGTH`, `randomSlugSuffix`, `SlugSuffixSchema`, `splitSlug`, `joinSlug`, `SLUG_SUGGESTION_COUNT`                                         |
+| `packages/shared-types/src/slug.ts`      | `SLUG_MIN_LENGTH`, `SLUG_MAX_LENGTH`, `RESERVED_SLUGS`, `SlugSchema`, `GIFT_CODE_LENGTH`, `CUSTOM_CODE_LENGTH`, `CODE_MAX_LENGTH`, `CUSTOM_LINK_SEPARATOR`, `randomCode`, `randomCodeCharacters`, `CodeSchema`, `customLink`, `parseLink`, `GiftLinkSchema`, `CustomNameSchema`, `slugify`                                                      |
 | `packages/shared-types/src/media.ts`     | `MediaKindSchema`, `MediaUploadResponseSchema`, `MEDIA_LIMITS`                                                                                                                                                                                                                                                                                  |
 | `packages/shared-types/src/payments.ts`  | `CheckoutSessionRequestSchema`, `CheckoutSessionResponseSchema`, `PriceSchema`, `PricesResponseSchema`, `PaymentConfirmationSchema`                                                                                                                                                                                                             |
 | `packages/shared-types/src/errors.ts`    | `ErrorCodeSchema`, `PremiumRequiredDetailsSchema`, `GiftLockedDetailsSchema`, `ApiErrorSchema`                                                                                                                                                                                                                                                  |
@@ -41,7 +41,6 @@ an HTTP status. It is a `Record<ErrorCode, number>`, so a code without a status 
 | `PREMIUM_REQUIRED`  | 402    | A plan check failed; details follow `PremiumRequiredDetailsSchema`           |
 | `NOT_FOUND`         | 404    | Unknown gift, card or public slug                                            |
 | `CONFLICT`          | 409    | Hard ceilings, already paid, QR of an unpublished gift                       |
-| `SLUG_TAKEN`        | 409    | Custom link in use                                                           |
 | `PAYLOAD_TOO_LARGE` | 413    | Upload over the size limit (raised by the file interceptor)                  |
 | `UNSUPPORTED_MEDIA` | 415    | File content is not an accepted image or audio format                        |
 | `GIFT_INCOMPLETE`   | 422    | Publish requirements; details `{ missing: [...] }`                           |
@@ -73,13 +72,14 @@ not repeat them in code, tests of other packages, or messages.
 
 ## Slug rules
 
-`SlugSchema`: length between `SLUG_MIN_LENGTH` and `SLUG_MAX_LENGTH`, lowercase letters, digits and single
-hyphens, no hyphen at either end. `CustomSlugSchema` additionally requires a name followed by an ending
-(`splitSlug`: the last hyphen-separated part, at least `SLUG_SUFFIX_MIN_LENGTH` letters or digits) and
-refuses a name in `RESERVED_SLUGS` (route names and words that must not become links). `joinSlug` builds
-a link from a name and an ending and shortens the name to fit. Generated links use an ending of
-`GENERATED_SLUG_SUFFIX_LENGTH`; `SLUG_SUFFIX_LENGTH` is only the random ending proposed for a custom link.
-`randomSlugSuffix(length)` draws without bias and uses Web Crypto, which
+A link is stored as its path: a code alone ("x9k2bd7m"), or a code, `/for/` and a name
+("7k2m/for/ana-luis"). `CodeSchema`: `CUSTOM_CODE_LENGTH` to `CODE_MAX_LENGTH` characters of the code
+alphabet with at least one digit. `SlugSchema` is the name of a custom link: length between
+`SLUG_MIN_LENGTH` and `SLUG_MAX_LENGTH`, lowercase letters, digits and single hyphens, no hyphen at either
+end. `parseLink` splits a stored link into `code` and `name` (`null` for a generated one); `customLink`
+joins them. `GiftLinkSchema` accepts both shapes. `CustomNameSchema` is what a client may send for a custom link:
+the name alone, not in `RESERVED_SLUGS`; the code is the API's to draw. `randomCode(length)` draws without bias, redraws until the code has a digit,
+and uses Web Crypto, which
 exists in Node and in browsers; the package declares it locally because it loads no platform types.
 
 ## Lifecycle periods

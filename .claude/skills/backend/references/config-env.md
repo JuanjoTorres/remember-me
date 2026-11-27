@@ -38,7 +38,6 @@ Read this before adding, changing or removing an environment variable of the API
 | `RATE_LIMIT_PER_MINUTE`        | no                         | `240`         | Requests per client IP per minute, all endpoints                                                           |
 | `GIFT_CREATION_LIMIT_PER_HOUR` | no                         | `30`          | Gifts one client IP may start per hour                                                                     |
 | `LINK_LOOKUP_MISS_LIMIT`       | no                         | `30`          | Links leading to no gift that one client IP may open in ten minutes before all its lookups are refused     |
-| `SLUG_CHECK_LIMIT`             | no                         | `60`          | Link availability checks one client IP may make in ten minutes                                             |
 | `TRUST_PROXY_HOPS`             | no                         | `0`           | Number of reverse proxies in front of the API                                                              |
 | `EVENT_BUS_DRIVER`             | no                         | `memory`      | `memory` or `redis`                                                                                        |
 | `REDIS_URL`                    | only with the redis driver | —             | `redis` or `rediss` URL                                                                                    |

@@ -18,7 +18,8 @@ async function restrictedImports(filePath: string, code: string): Promise<string
 }
 
 const RECIPIENT_FILES = [
-  'src/app/for/[slug]/page.tsx',
+  'src/app/(gift)/[code]/page.tsx',
+  'src/app/(gift)/[code]/for/[name]/page.tsx',
   'src/features/gift-experience/Stories.tsx',
   'src/features/gift-reveal/ScratchCard.tsx',
 ];
@@ -48,7 +49,7 @@ describe('recipient path boundaries (lint rule)', () => {
     'lets the recipient path use its own features and shared code',
     async () => {
       const code = `import a from '@/features/gift-reveal/Reveal';\nimport b from '@/features/shared/api';\nexport default [a, b];\n`;
-      expect(await restrictedImports('src/app/for/[slug]/page.tsx', code)).toEqual([]);
+      expect(await restrictedImports('src/app/(gift)/[code]/page.tsx', code)).toEqual([]);
     },
     LINT_TIMEOUT_MS,
   );

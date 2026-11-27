@@ -22,7 +22,7 @@ requires the events to be named:
 | `pnpm check:docs`   | —                                                      | Every path named in a skill or agent definition must exist (`scripts/check-docs.mjs`)  |
 | `pnpm lint`         | —                                                      |                                                                                        |
 | `pnpm typecheck`    | —                                                      |                                                                                        |
-| `pnpm build`        | `NEXT_PUBLIC_API_URL`, `INTERNAL_API_URL` in the shell | Fails collecting `/for/[slug]` without them                                            |
+| `pnpm build`        | `NEXT_PUBLIC_API_URL`, `INTERNAL_API_URL` in the shell | Fails collecting the gift pages without them                                           |
 | `pnpm test`         | Docker running                                         | API tests start PostgreSQL, Redis and S3Mock containers                                |
 | `pnpm test:e2e`     | Docker running, a previous `pnpm build`                | `scripts/e2e.sh` runs Playwright inside its official image against the compose network |
 

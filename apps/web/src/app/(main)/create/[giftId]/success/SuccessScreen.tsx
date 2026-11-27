@@ -7,7 +7,6 @@ import { PaymentSuccess } from '@/features/checkout/PaymentSuccess';
 import { giftApi } from '@/features/gift-creator/api';
 import { EditorGate } from '@/features/gift-creator/components/EditorGate';
 import { SharePanel } from '@/features/gift-creator/components/SharePanel';
-import { isApiError } from '@/features/shared/api/client';
 
 const CONFIRM_EVERY_POLLS = 5;
 
@@ -58,9 +57,9 @@ function Confirmed({ giftId, editToken }: { giftId: string; editToken: string })
             try {
               setLatest(await api.changeSlug(slug));
               return true;
-            } catch (error) {
-              if (isApiError(error)) return false;
-              throw error;
+            } catch {
+              // Refused or unreachable: the panel says so and the creator can try again.
+              return false;
             }
           }}
         />

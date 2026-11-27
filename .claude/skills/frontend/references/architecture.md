@@ -14,7 +14,7 @@ Next.js App Router, React, TypeScript strict, Tailwind CSS 4, framer-motion, Tan
 | Folder                                  | Holds                                                                     |
 | --------------------------------------- | ------------------------------------------------------------------------- |
 | `apps/web/src/app/(main)`               | Root layout of the site: home, privacy, and the editor under `create`     |
-| `apps/web/src/app/for`                  | Second root layout: the recipient route, isolated from the rest           |
+| `apps/web/src/app/(gift)`               | Second root layout: the recipient route, isolated from the rest           |
 | `apps/web/src/features/gift-creator`    | The editor: components, `useGiftEditor`, token storage, image compression |
 | `apps/web/src/features/checkout`        | Upgrade triggers, upgrade sheet, custom link field, payment return        |
 | `apps/web/src/features/gift-experience` | Recipient stories: server loader, labels, reducer, cards, preloading      |
@@ -30,7 +30,7 @@ The `app` folder has no layout file of its own. The app has two root layouts, so
 `<html>` and imports `apps/web/src/app/globals.css`:
 
 - `apps/web/src/app/(main)/layout.tsx`: light theme, wraps children in `NextIntlClientProvider`.
-- `apps/web/src/app/for/layout.tsx`: dark, full screen, no client provider at all.
+- `apps/web/src/app/(gift)/layout.tsx`: dark, full screen, no client provider at all.
 
 `apps/web/src/instrumentation.ts` runs once at server start and calls `getServerEnv()` so that the server
 refuses to boot with an invalid environment.
@@ -40,7 +40,7 @@ refuses to boot with an invalid environment.
 | From              | May import                                                     |
 | ----------------- | -------------------------------------------------------------- |
 | `app/(main)`      | any feature                                                    |
-| `app/for`         | `gift-experience`, `gift-reveal`, `shared`                     |
+| `app/(gift)`      | `gift-experience`, `gift-reveal`, `shared`                     |
 | `gift-creator`    | `checkout`, `shared`                                           |
 | `checkout`        | `shared` (it does not import `gift-creator` today; keep it so) |
 | `gift-experience` | `gift-reveal`, `shared`                                        |
@@ -53,7 +53,7 @@ it has no import of `gift-creator`.
 
 ## The recipient boundary
 
-- Rule: `no-restricted-imports` in `apps/web/eslint.config.mjs`, applied to `src/app/for/**`,
+- Rule: `no-restricted-imports` in `apps/web/eslint.config.mjs`, applied to `src/app/(gift)/**`,
   `src/features/gift-experience/**` and `src/features/gift-reveal/**`. It blocks `@/features/gift-creator`,
   `@/features/checkout`, `stripe`, `@stripe/*`, and relative paths that reach into those two features
   (always use the `@/features` alias so the rule can see the import).
@@ -82,7 +82,7 @@ it has no import of `gift-creator`.
 ## Add a route
 
 1. Decide the root layout: creator-facing pages go under `apps/web/src/app/(main)`; anything a recipient
-   opens goes under `apps/web/src/app/for`.
+   opens goes under `apps/web/src/app/(gift)`.
 2. Keep `page.tsx` thin: await `params`, load data if it is a server page, render a feature component.
 3. Put strings in both message files and add the row to `.claude/skills/frontend/references/routes.md`.
 

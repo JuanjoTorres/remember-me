@@ -14,7 +14,6 @@ vi.mock('@/features/checkout/api', () => ({
     premium: { amount: 499, currency: 'eur' },
     customSlug: { amount: 199, currency: 'eur' },
   }),
-  checkSlug: vi.fn(),
   createCheckoutSession: vi.fn(),
 }));
 vi.mock('@/features/gift-creator/api');
@@ -57,7 +56,7 @@ describe('PublishedScreen', () => {
     renderPublished(async () => published());
     expect(await screen.findByRole('heading', { name: 'Your gift is live' })).toBeInTheDocument();
     expect(await screen.findByRole('img', { name: 'QR code of your gift' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'kardoo.me/for/gift-x9k2' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'kardoo.me/x9k2bd7m' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download QR' })).toBeEnabled();
     expect(screen.getByText(/You can still fix typos and swap photos until/)).toHaveTextContent(
       '2030',

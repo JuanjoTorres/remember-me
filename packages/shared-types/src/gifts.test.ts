@@ -9,13 +9,15 @@ import {
   freeGiftExpiry,
 } from './lifecycle.js';
 import {
-  CustomSlugSchema,
-  GENERATED_SLUG_SUFFIX_LENGTH,
-  joinSlug,
-  randomSlugSuffix,
-  SLUG_MAX_LENGTH,
-  SLUG_SUFFIX_LENGTH,
-  splitSlug,
+  CodeSchema,
+  CUSTOM_CODE_LENGTH,
+  customLink,
+  CustomNameSchema,
+  GIFT_CODE_LENGTH,
+  GiftLinkSchema,
+  parseLink,
+  randomCode,
+  randomCodeCharacters,
   slugify,
 } from './slug.js';
 
@@ -59,42 +61,68 @@ describe('slugs', () => {
     expect(slugify('🎁')).toBe('');
   });
 
-  it('validates custom slugs', () => {
-    expect(CustomSlugSchema.safeParse('te-quiero-ana-x9k2').success).toBe(true);
-    expect(CustomSlugSchema.safeParse('ana-2026').success).toBe(true);
-    for (const bad of ['ab', 'Hello', 'a--b', '-abc', 'abc-', 'con espacio']) {
-      expect(CustomSlugSchema.safeParse(bad).success, bad).toBe(false);
+  it('reads a custom link: a code, then the name', () => {
+    expect(parseLink('7k2m/for/ana-luis')).toEqual({ code: '7k2m', name: 'ana-luis' });
+    expect(parseLink('x9k2bd7m/for/ana-2026')).toEqual({ code: 'x9k2bd7m', name: 'ana-2026' });
+    expect(customLink('7k2m', 'ana-luis')).toBe('7k2m/for/ana-luis');
+  });
+
+  it('refuses a custom link with a bad name', () => {
+    for (const name of ['ab', 'Hello', 'a--b', '-abc', 'abc-', 'con espacio', 'a'.repeat(41)]) {
+      expect(parseLink(`7k2m/for/${name}`), name).toBeNull();
     }
   });
 
-  it('refuses a custom slug without an ending of at least four characters', () => {
-    for (const bad of ['laura', 'te-quiero-ana', 'laura-x9k', 'x9k2']) {
-      expect(CustomSlugSchema.safeParse(bad).success, bad).toBe(false);
+  it('refuses a custom link without a real code in front', () => {
+    for (const bad of [
+      'luis/for/ana', // a word: no digit
+      'mama/for/te-quiero',
+      '7k2/for/ana-luis', // too short
+      'a7k2/for/ana-luis', // a vowel is not in the alphabet
+      '7K2M/for/ana-luis',
+      '7k2m/ana-luis',
+      '7k2m/for/ana/luis',
+    ]) {
+      expect(parseLink(bad), bad).toBeNull();
     }
   });
 
-  it('refuses a reserved name, whatever its ending', () => {
-    for (const bad of ['create-x9k2', 'api-2026', 'remember-me-abcd']) {
-      expect(CustomSlugSchema.safeParse(bad).success, bad).toBe(false);
+  it('lets a creator choose a name, and only a name, for a custom link', () => {
+    for (const name of ['ana-luis', 'te-quiero-ana', 'ana-2026', 'abc']) {
+      expect(CustomNameSchema.safeParse(name).success, name).toBe(true);
+    }
+    for (const bad of [
+      'ab',
+      'Ana Luis',
+      'a--b',
+      'a'.repeat(41),
+      // Reserved words.
+      'create',
+      'api',
+      'remember-me',
+      // A whole link: the code is never the creator's to choose.
+      '7k2m/for/ana-luis',
+      '2222/for/ana',
+    ]) {
+      expect(CustomNameSchema.safeParse(bad).success, bad).toBe(false);
     }
   });
 
-  it('splits and joins a name and its ending', () => {
-    expect(splitSlug('te-quiero-ana-x9k2')).toEqual({ base: 'te-quiero-ana', suffix: 'x9k2' });
-    expect(splitSlug('laura')).toBeNull();
-    expect(splitSlug('laura-x9k')).toBeNull();
-    expect(joinSlug('laura', 'x9k2')).toBe('laura-x9k2');
-    const long = joinSlug('a'.repeat(60), 'x9k2');
-    expect(long).toHaveLength(SLUG_MAX_LENGTH);
-    expect(long.endsWith('-x9k2')).toBe(true);
-    expect(joinSlug('ana-'.repeat(9), 'x9k2')).not.toContain('--');
+  it('tells a generated link from a custom one, and from anything else', () => {
+    expect(parseLink('x9k2bd7m')).toEqual({ code: 'x9k2bd7m', name: null });
+    for (const link of ['x9k2bd7m', '7k2m/for/ana-luis']) {
+      expect(GiftLinkSchema.safeParse(link).success, link).toBe(true);
+    }
+    for (const bad of ['create', 'privacy', 'wp-login.php', 'sarah-x9k2bd7m', 'bcdfghjk', '']) {
+      expect(parseLink(bad), bad).toBeNull();
+      expect(GiftLinkSchema.safeParse(bad).success, bad).toBe(false);
+    }
   });
 
-  it('generates endings of the length asked for, without favouring any character', () => {
-    expect(randomSlugSuffix(GENERATED_SLUG_SUFFIX_LENGTH)).toMatch(/^[a-z0-9]{8}$/);
+  it('draws the characters of a code without favouring any', () => {
     const counts = new Map<string, number>();
     for (let batch = 0; batch < 100; batch += 1) {
-      for (const character of randomSlugSuffix(27_000)) {
+      for (const character of randomCodeCharacters(27_000)) {
         counts.set(character, (counts.get(character) ?? 0) + 1);
       }
     }
@@ -107,14 +135,17 @@ describe('slugs', () => {
     }
   });
 
-  it('generates endings that are valid and not repeated', () => {
-    const endings = Array.from({ length: 50 }, randomSlugSuffix);
-    for (const ending of endings) {
-      expect(ending).toMatch(/^[a-z0-9]+$/);
-      expect(ending).toHaveLength(SLUG_SUFFIX_LENGTH);
-      expect(CustomSlugSchema.safeParse(`laura-${ending}`).success).toBe(true);
+  it('generates codes of the length asked for, always with a digit, and not repeated', () => {
+    const codes = Array.from({ length: 500 }, () => randomCode(CUSTOM_CODE_LENGTH));
+    for (const code of codes) {
+      expect(code).toHaveLength(CUSTOM_CODE_LENGTH);
+      expect(code).toMatch(/[0-9]/);
+      expect(CodeSchema.safeParse(code).success, code).toBe(true);
+      expect(parseLink(customLink(code, 'laura'))).toEqual({ code, name: 'laura' });
     }
-    expect(new Set(endings).size).toBeGreaterThan(40);
+    expect(new Set(codes).size).toBeGreaterThan(450);
+    expect(randomCode()).toHaveLength(GIFT_CODE_LENGTH);
+    expect(GiftLinkSchema.safeParse(randomCode()).success).toBe(true);
   });
 });
 

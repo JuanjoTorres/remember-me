@@ -55,16 +55,16 @@ refreshes it once on `UNAUTHORIZED` (`apps/web/src/features/gift-creator/useGift
 
 Codes the UI reacts to today:
 
-| Code                | Where                                                           | Reaction                                          |
-| ------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| `PREMIUM_REQUIRED`  | `useGiftEditor`, `useUpload` in `MediaInputs.tsx`, `SharePanel` | Opens the upgrade sheet with the matching reason  |
-| `GIFT_LOCKED`       | `useGiftEditor`                                                 | Message in the sticky bar; the gift is reloaded   |
-| `UNAUTHORIZED`      | `withGrant`; `GiftEditor` on load                               | Refresh the grant once; drop a refused link token |
-| `NOT_FOUND`         | `GiftEditor` on load                                            | "No access" screen                                |
-| `UNSUPPORTED_MEDIA` | `useUpload`                                                     | Message per media kind                            |
-| `PAYLOAD_TOO_LARGE` | `useUpload`                                                     | "File too large" message                          |
-| `CONFLICT`          | `PremiumUpgradeSheet`                                           | "Already premium" message                         |
-| any API error       | `onChangeSlug` in `SuccessScreen`                               | The pending link field shows "taken"              |
+| Code                          | Where                                                           | Reaction                                                                              |
+| ----------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `PREMIUM_REQUIRED`            | `useGiftEditor`, `useUpload` in `MediaInputs.tsx`, `SharePanel` | Opens the upgrade sheet with the matching reason                                      |
+| `GIFT_LOCKED`                 | `useGiftEditor`                                                 | Message in the sticky bar; the gift is reloaded                                       |
+| `UNAUTHORIZED`                | `withGrant`; `GiftEditor` on load                               | Refresh the grant once; drop a refused link token                                     |
+| `NOT_FOUND`                   | `GiftEditor` on load                                            | "No access" screen                                                                    |
+| `UNSUPPORTED_MEDIA`           | `useUpload`                                                     | Message per media kind                                                                |
+| `PAYLOAD_TOO_LARGE`           | `useUpload`                                                     | "File too large" message                                                              |
+| `CONFLICT`                    | `PremiumUpgradeSheet`                                           | "Already premium" message                                                             |
+| any error, also no connection | `onChangeSlug` in `SuccessScreen`                               | Resolves to `false`; the pending link panel shows `pendingSlugError` and stays usable |
 
 Everything else falls into a generic message of the component that made the call.
 
@@ -95,7 +95,6 @@ gift and the edit token, which is returned only that once.
 | Function                | Endpoint                          | Auth  |
 | ----------------------- | --------------------------------- | ----- |
 | `getPrices`             | `GET /payments/prices`            | none  |
-| `checkSlug`             | `GET /gifts/check-slug`           | none  |
 | `createCheckoutSession` | `POST /payments/checkout-session` | grant |
 | `confirmPayment`        | `POST /payments/confirm`          | grant |
 

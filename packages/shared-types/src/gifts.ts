@@ -6,7 +6,7 @@ import {
   ProFeatureSchema,
   RevealTemplateSchema,
 } from './plans.js';
-import { CustomSlugSchema } from './slug.js';
+import { CustomNameSchema } from './slug.js';
 
 export const LocaleSchema = z.enum(['en', 'es']);
 export type Locale = z.infer<typeof LocaleSchema>;
@@ -104,7 +104,8 @@ export const UpdateGiftRequestSchema = z
   .partial();
 export type UpdateGiftRequest = z.infer<typeof UpdateGiftRequestSchema>;
 
-export const ChangeSlugRequestSchema = z.object({ slug: CustomSlugSchema });
+/** The name for the custom link; the API puts a code in front of it. */
+export const ChangeSlugRequestSchema = z.object({ name: CustomNameSchema });
 export type ChangeSlugRequest = z.infer<typeof ChangeSlugRequestSchema>;
 
 /** The gift as its creator sees it. Requires the edit token. */
