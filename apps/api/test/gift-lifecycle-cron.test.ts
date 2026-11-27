@@ -11,25 +11,23 @@ function cron(scheduledJobs: boolean, lifecycle: Partial<GiftLifecycleService>) 
 }
 
 describe('daily jobs', () => {
-  it('run the clean-up and the anniversary email when they fire', async () => {
-    const lifecycle = {
-      deleteExpired: vi.fn().mockResolvedValue(2),
-      sendAnniversaryEmails: vi.fn().mockResolvedValue(1),
-    };
-    const jobs = cron(true, lifecycle);
-    await jobs.deleteExpired();
-    await jobs.sendAnniversaryEmails();
+  it('run the clean-up when it fires', async () => {
+    const lifecycle = { deleteExpired: vi.fn().mockResolvedValue(2) };
+    await cron(true, lifecycle).deleteExpired();
     expect(lifecycle.deleteExpired).toHaveBeenCalledOnce();
-    expect(lifecycle.sendAnniversaryEmails).toHaveBeenCalledOnce();
   });
 
   it('do nothing on an instance where they are switched off', async () => {
-    const lifecycle = { deleteExpired: vi.fn(), sendAnniversaryEmails: vi.fn() };
-    const jobs = cron(false, lifecycle);
-    await jobs.deleteExpired();
-    await jobs.sendAnniversaryEmails();
+    const lifecycle = { deleteExpired: vi.fn() };
+    await cron(false, lifecycle).deleteExpired();
     expect(lifecycle.deleteExpired).not.toHaveBeenCalled();
-    expect(lifecycle.sendAnniversaryEmails).not.toHaveBeenCalled();
+  });
+
+  it('do not send the anniversary email, which is switched off for now', () => {
+    const scheduled = Object.getOwnPropertyNames(GiftLifecycleCron.prototype).filter(
+      (name) => name !== 'constructor' && name !== 'run',
+    );
+    expect(scheduled).toEqual(['deleteExpired']);
   });
 
   it('survive a job that fails, so that the process keeps running', async () => {

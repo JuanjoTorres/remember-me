@@ -44,17 +44,29 @@ export function SavedInput({
     else if (!focused && !dirty) setDraft(value);
   }
 
+  // The text this field last sent to be saved; its answer may still be on its way.
+  const sent = useRef<string | null>(null);
   /** Saves the text if it is not the saved one; tells whether it sent it. */
   const saveIfChanged = (): boolean => {
     const text = draft.trim();
     if (disabled || text === value) return false;
+    sent.current = text;
     onSave(text);
     return true;
   };
   const latest = useRef(saveIfChanged);
+  const leftBehind = useRef(false);
   useEffect(() => {
     latest.current = saveIfChanged;
+    leftBehind.current = !focused && dirty && draft.trim() !== sent.current;
   });
+  // An answer that leaves the field showing a text the creator typed and that was never sent (they
+  // typed the old text back while the save of another one was on its way): save what it shows.
+  useEffect(() => {
+    if (leftBehind.current) latest.current();
+    // The save this field was waiting for has answered.
+    else if (sent.current === value) sent.current = null;
+  }, [value]);
   useEffect(() => register?.(() => latest.current()), [register]);
 
   const props = {
@@ -71,7 +83,9 @@ export function SavedInput({
     },
     onBlur: () => {
       setFocused(false);
-      saveIfChanged();
+      // Back on the saved text with no save of this field on its way: nothing is left to save,
+      // so a value changed elsewhere later is adopted instead of being overwritten.
+      if (!saveIfChanged() && draft.trim() === value && sent.current === null) setDirty(false);
     },
   };
   return multiline ? <TextArea {...props} /> : <TextInput {...props} />;

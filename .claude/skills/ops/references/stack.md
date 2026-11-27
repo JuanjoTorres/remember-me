@@ -42,8 +42,9 @@ host `.env` must define.
 - Database name, user and the local bucket are still called `remember_me` / `remember` /
   `remember-me`. Renaming them means migrating data on every host: do not do it in passing.
 - Do not add a published port to `api`, `web` or `postgres` in the server stack.
-- The API runs two daily jobs inside its own process (03:15 and 09:00 UTC: deleting expired gifts with
-  their files, and the anniversary email). There is no separate cron container and no host cron for them.
+- The API runs one daily job inside its own process (03:15 UTC: deleting expired gifts with their
+  files). There is no separate cron container and no host cron for it. The anniversary email is switched
+  off, so no mail provider has to be configured.
 - A second API instance needs `EVENT_BUS_DRIVER=redis`, a Redis service, and rate-limit counters
   moved to a shared store first (see `.claude/skills/backend/references/events.md`).
 

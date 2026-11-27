@@ -33,10 +33,11 @@ optional trivia question, ending in an interactive surprise reveal.
 6. **Experience the gift** (`/for/[slug]`): full-screen stories, background preload of the next cards' media,
    optional trivia, then the reveal (scratch card, ticket or gift box) with confetti. Never indexed.
 7. **After delivery:** publishing fixes the recipient's name. Typos and photos can be corrected for 48
-   hours; after that the gift is locked, so that it cannot be reused for someone else. It can always be
+   hours; after that the edit link opens the gift locked, so that it cannot be reused for someone else
+   (an editor opened before the end keeps saving while it stays in use). It can always be
    deleted for good from the editor's danger zone (typed confirmation), which also removes its files.
-8. **A year later:** the buyer of a paid gift gets one email inviting them to relive it and to create a
-   new one.
+8. **A year later (switched off for now, technical debt):** the buyer of a paid gift would get one email
+   inviting them to relive it and to create a new one.
 
 ## Plans
 
@@ -96,9 +97,9 @@ taken link.
   the plan limits apply to card creation and reveal template selection (`PREMIUM_REQUIRED` with the
   capability that was hit).
 - `gifts` refuses edits of a delivered gift with `GIFT_LOCKED`: the recipient's name from publication,
-  everything 48 hours later.
-- Two daily jobs in `gifts` (`@nestjs/schedule`): delete expired gifts with their files, and send the
-  anniversary email through the configured mail driver (`MAIL_DRIVER`, Resend).
+  everything 48 hours later unless the request belongs to an editing session opened before that.
+- One daily job in `gifts` (`@nestjs/schedule`): delete expired gifts with their files. The anniversary
+  email (mail driver `MAIL_DRIVER`, Resend) is written but not scheduled.
 - `payments`:
   - `POST /payments/checkout-session` `{ giftId, includeCustomSlug, customSlug?, successUrl, cancelUrl }`:
     Stripe Checkout, `mode=payment`, EUR, dynamic payment methods, one or two `line_items`, data in

@@ -34,7 +34,12 @@ return `GiftEditorView` unless noted.
 | `DELETE /gifts/:giftId/cards/:cardId` | edit token | —                              | 423 `GIFT_LOCKED`; 404 unknown card; 422 `GIFT_INCOMPLETE` removing the last card of a published gift                                                                                          |
 
 `GIFT_LOCKED` details follow `GiftLockedDetailsSchema`: `scope` is `RECIPIENT_NAME` (a published gift
-changing that name) or `GIFT` (the correction window is over).
+changing that name) or `GIFT` (the correction window is over and the request holds no editing session).
+
+Every editor endpoint also reads `x-edit-session` (`EDIT_SESSION_HEADER`): the grant of the last
+`GiftEditorView`. It is optional and only matters after the correction window, where it lets an editor
+that was opened in time go on saving (`.claude/skills/backend/references/gifts.md`, "Locking after
+delivery").
 
 ## public gifts: `apps/api/src/modules/gifts/public-gifts.controller.ts`
 

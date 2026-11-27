@@ -24,8 +24,16 @@ export async function makePremium(app: INestApplication, giftId: string): Promis
   await app.get(PrismaService).gift.update({ where: { id: giftId }, data: { isPremium: true } });
 }
 
-/** A client bound to one gift and its edit token. */
-export function editor(app: INestApplication, giftId: string, editToken: string) {
+/**
+ * A client bound to one gift and its edit token. With `session`, it sends back the grant of an
+ * earlier answer, as the editor in the browser does.
+ */
+export function editor(
+  app: INestApplication,
+  giftId: string,
+  editToken: string,
+  session?: () => string,
+) {
   const send = (
     method: 'get' | 'post' | 'patch' | 'put' | 'delete',
     path: string,
@@ -33,6 +41,7 @@ export function editor(app: INestApplication, giftId: string, editToken: string)
   ) => {
     const agent = request(app.getHttpServer());
     const call = agent[method](`/gifts/${giftId}${path}`).set('x-edit-token', editToken);
+    if (session) void call.set('x-edit-session', session());
     return body ? call.send(body) : call;
   };
   return {

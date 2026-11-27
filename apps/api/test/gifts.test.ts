@@ -16,7 +16,8 @@ import {
   SLUG_SUGGESTION_COUNT,
 } from '@remember-me/shared-types';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { GRANT_TTL_SECONDS } from '../src/shared/auth/gift-grant.service.js';
 import { GiftDeletedEvent, PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
@@ -704,6 +705,82 @@ describe('gifts', () => {
       expect(view.cards.map((card) => card.id)).toEqual([first, second]);
       // The recipient is not affected.
       await http().get(`/public/gifts/${gift.slug}`).expect(200);
+    });
+
+    it('lets an editor opened before the end go on saving after it', async () => {
+      const { gift, editToken } = await publishedGift();
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS - 1);
+      // The browser keeps the grant of the last answer and sends it with the next request.
+      let grant = '';
+      const open = editor(app, gift.id, editToken, () => grant);
+      const keep = (response: { body: GiftEditorView }) => {
+        grant = response.body.grant;
+        return response.body;
+      };
+      keep(await editor(app, gift.id, editToken).get().expect(200));
+
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS + 1);
+      expect(keep(await open.update({ senderName: 'Tom' }).expect(200)).locked).toBe(false);
+      const cards = keep(await open.addCard(photoCard('late, but mine')).expect(201)).cards;
+      const [first, second] = [cards[0]!.id, cards[1]!.id];
+      keep(await open.updateCard(first, photoCard('typo fixed late')).expect(200));
+      keep(await open.reorder([second, first]).expect(200));
+      keep(await open.removeCard(first).expect(200));
+      // Reloading the page keeps the session too.
+      expect(keep(await open.get().expect(200))).toMatchObject({
+        locked: false,
+        senderName: 'Tom',
+      });
+      keep(await open.update({ reveal: { headline: 'Porto' } }).expect(200));
+
+      // Opening the edit link now starts no session: the gift is locked for that visit.
+      const late = editor(app, gift.id, editToken);
+      const view = (await late.get().expect(200)).body as GiftEditorView;
+      expect(view.locked).toBe(true);
+      await expectLocked(late.update({ senderName: 'Someone else' }), 'GIFT');
+      // And the grant of a locked visit does not open one either.
+      await expectLocked(
+        editor(app, gift.id, editToken, () => view.grant).update({ senderName: 'Someone else' }),
+        'GIFT',
+      );
+    });
+
+    it('ends an editing session whose grant has run out, or that belongs to another gift', async () => {
+      const { gift, editToken } = await publishedGift();
+      const other = await publishedGift();
+      const grant = ((await editor(app, gift.id, editToken).get()).body as GiftEditorView).grant;
+      const otherGrant = ((await other.client.get()).body as GiftEditorView).grant;
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS + 1);
+
+      await expectLocked(
+        editor(app, gift.id, editToken, () => otherGrant).update({ senderName: 'Tom' }),
+        'GIFT',
+      );
+      await expectLocked(
+        editor(app, gift.id, editToken, () => 'not-a-grant').update({ senderName: 'Tom' }),
+        'GIFT',
+      );
+      // Half an hour without a request: the grant, and with it the session, is over.
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + (GRANT_TTL_SECONDS + 1) * 1000 });
+      try {
+        await expectLocked(
+          editor(app, gift.id, editToken, () => grant).update({ senderName: 'Tom' }),
+          'GIFT',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ends every editing session when the gift is locked by hand', async () => {
+      const { gift, editToken } = await publishedGift();
+      const grant = ((await editor(app, gift.id, editToken).get()).body as GiftEditorView).grant;
+      await app
+        .get(PrismaService)
+        .gift.update({ where: { id: gift.id }, data: { lockedAt: new Date(Date.now() - 1000) } });
+      const open = editor(app, gift.id, editToken, () => grant);
+      await expectLocked(open.update({ senderName: 'Tom' }), 'GIFT');
+      expect((await open.get()).body.locked).toBe(true);
     });
 
     it('locks at once when the gift is locked by hand', async () => {

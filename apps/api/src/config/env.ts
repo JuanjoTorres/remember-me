@@ -50,12 +50,15 @@ const EnvSchema = z
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
-    /** Whether this instance runs the daily jobs (expired gifts, anniversary email). */
+    /** Whether this instance runs the daily job that deletes expired gifts. */
     SCHEDULED_JOBS: z
       .enum(['on', 'off'])
       .default('on')
       .transform((value) => value === 'on'),
-    /** `log` sends nothing (and the anniversary email waits); `resend` sends through Resend. */
+    /**
+     * `log` sends nothing; `resend` sends through Resend. Nothing sends email while the
+     * anniversary email is switched off.
+     */
     MAIL_DRIVER: z.enum(['log', 'resend']).default('log'),
     RESEND_API_KEY: emptyAsUnset(z.string().startsWith('re_').optional()),
     /** Sender of every email, e.g. `kardoo.me <hello@kardoo.me>`. Its domain must be verified. */

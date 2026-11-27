@@ -33,7 +33,13 @@ import { EventBus } from '../../shared/events/event-bus.js';
 import { AppError } from '../../shared/http/app-error.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { editTokenMatches, generateEditToken } from './edit-token.js';
-import { type GiftWithCards, isLocked, toEditorView, toPublicGift } from './gift.mapper.js';
+import {
+  type GiftWithCards,
+  isLocked,
+  isLockedByHand,
+  toEditorView,
+  toPublicGift,
+} from './gift.mapper.js';
 import { MediaUrlPolicy } from './media-url-policy.js';
 import { generateSlug } from './slug-generator.js';
 
@@ -63,11 +69,12 @@ function locked(scope: GiftLockedDetails['scope'], message: string): AppError {
   return new AppError('GIFT_LOCKED', message, details);
 }
 
-/** A delivered gift must not be reused for someone else: after the correction window nothing changes. */
-function assertEditable(gift: GiftWithCards, now = new Date()): void {
-  if (isLocked(gift, now)) {
-    throw locked('GIFT', 'This gift was delivered and can no longer be edited');
-  }
+/** What a request to the editor endpoints presents. */
+export interface EditAccess {
+  /** The gift's edit token. */
+  editToken?: string;
+  /** The grant of the last answer, when the editor sends it back (`EDIT_SESSION_HEADER`). */
+  session?: string;
 }
 
 /**
@@ -122,23 +129,23 @@ export class GiftsService {
     return { gift: this.view(gift), editToken: token };
   }
 
-  async get(giftId: string, editToken: string | undefined): Promise<GiftEditorView> {
-    return this.view(await this.authorize(giftId, editToken));
+  async get(giftId: string, access: EditAccess): Promise<GiftEditorView> {
+    return this.view(await this.authorize(giftId, access), access);
   }
 
   async update(
     giftId: string,
-    editToken: string | undefined,
+    access: EditAccess,
     changes: UpdateGiftRequest,
   ): Promise<GiftEditorView> {
-    await this.authorize(giftId, editToken);
+    await this.authorize(giftId, access);
     const { reveal } = changes;
     if (reveal) this.mediaPolicy(giftId).assertReveal(reveal);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // Locked so that a concurrent publication sees either the old or the new values.
       const current = await this.lock(tx, giftId);
-      assertEditable(current);
+      this.assertEditable(current, access);
       if (
         current.status === 'PUBLISHED' &&
         changes.recipientName !== undefined &&
@@ -173,21 +180,17 @@ export class GiftsService {
         include: WITH_CARDS,
       });
     });
-    return this.view(updated);
+    return this.view(updated, access);
   }
 
-  async addCard(
-    giftId: string,
-    editToken: string | undefined,
-    card: CardInput,
-  ): Promise<GiftEditorView> {
-    await this.authorize(giftId, editToken);
+  async addCard(giftId: string, access: EditAccess, card: CardInput): Promise<GiftEditorView> {
+    await this.authorize(giftId, access);
     this.mediaPolicy(giftId).assertCard(card);
 
     await this.prisma.$transaction(async (tx) => {
       // Locked so that two concurrent requests cannot both pass the card limit.
       const gift = await this.lock(tx, giftId);
-      assertEditable(gift);
+      this.assertEditable(gift, access);
 
       if (planApplies(gift)) {
         assertPlanAllows(
@@ -203,21 +206,21 @@ export class GiftsService {
         data: { giftId, type: card.type, payload: card.payload, position: lastPosition + 1 },
       });
     });
-    return this.view(await this.load(giftId));
+    return this.view(await this.load(giftId), access);
   }
 
   async updateCard(
     giftId: string,
-    editToken: string | undefined,
+    access: EditAccess,
     cardId: string,
     card: CardInput,
   ): Promise<GiftEditorView> {
-    await this.authorize(giftId, editToken);
+    await this.authorize(giftId, access);
     this.mediaPolicy(giftId).assertCard(card);
     await this.prisma.$transaction(async (tx) => {
       // Locked, like every other edit: the window closing is decided on one consistent read.
       const gift = await this.lock(tx, giftId);
-      assertEditable(gift);
+      this.assertEditable(gift, access);
       const existing = gift.cards.find((candidate) => candidate.id === cardId);
       if (!existing) throw new AppError('NOT_FOUND', 'Card not found');
       if (existing.type !== card.type) {
@@ -225,18 +228,14 @@ export class GiftsService {
       }
       await tx.giftCard.update({ where: { id: cardId }, data: { payload: card.payload } });
     });
-    return this.view(await this.load(giftId));
+    return this.view(await this.load(giftId), access);
   }
 
-  async removeCard(
-    giftId: string,
-    editToken: string | undefined,
-    cardId: string,
-  ): Promise<GiftEditorView> {
-    await this.authorize(giftId, editToken);
+  async removeCard(giftId: string, access: EditAccess, cardId: string): Promise<GiftEditorView> {
+    await this.authorize(giftId, access);
     await this.prisma.$transaction(async (tx) => {
       const gift = await this.lock(tx, giftId);
-      assertEditable(gift);
+      this.assertEditable(gift, access);
       if (!gift.cards.some((card) => card.id === cardId)) {
         throw new AppError('NOT_FOUND', 'Card not found');
       }
@@ -247,18 +246,18 @@ export class GiftsService {
       }
       await tx.giftCard.delete({ where: { id: cardId } });
     });
-    return this.view(await this.load(giftId));
+    return this.view(await this.load(giftId), access);
   }
 
   async reorderCards(
     giftId: string,
-    editToken: string | undefined,
+    access: EditAccess,
     cardIds: string[],
   ): Promise<GiftEditorView> {
-    await this.authorize(giftId, editToken);
+    await this.authorize(giftId, access);
     await this.prisma.$transaction(async (tx) => {
       const gift = await this.lock(tx, giftId);
-      assertEditable(gift);
+      this.assertEditable(gift, access);
       const current = new Set(gift.cards.map((card) => card.id));
       const sameCards =
         cardIds.length === current.size &&
@@ -274,11 +273,11 @@ export class GiftsService {
         await tx.giftCard.update({ where: { id }, data: { position } });
       }
     });
-    return this.view(await this.load(giftId));
+    return this.view(await this.load(giftId), access);
   }
 
-  async publish(giftId: string, editToken: string | undefined): Promise<GiftEditorView> {
-    await this.authorize(giftId, editToken);
+  async publish(giftId: string, access: EditAccess): Promise<GiftEditorView> {
+    await this.authorize(giftId, access);
     const published = await this.withSlugRetry(() =>
       this.prisma.$transaction(async (tx) => {
         // Locked: a double tap or a payment arriving at the same time must not replace the link.
@@ -311,16 +310,12 @@ export class GiftsService {
         });
       }),
     );
-    return this.view(published);
+    return this.view(published, access);
   }
 
   /** Lets the creator pick the custom link they paid for when the first choice was taken. */
-  async changeSlug(
-    giftId: string,
-    editToken: string | undefined,
-    slug: string,
-  ): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, editToken);
+  async changeSlug(giftId: string, access: EditAccess, slug: string): Promise<GiftEditorView> {
+    const gift = await this.authorize(giftId, access);
     if (!gift.customSlugPending) {
       throw new AppError('PREMIUM_REQUIRED', 'A custom link is a paid extra', {
         capability: 'CUSTOM_SLUG',
@@ -339,15 +334,15 @@ export class GiftsService {
           include: WITH_CARDS,
         });
       });
-      return this.view(updated);
+      return this.view(updated, access);
     } catch (error) {
       if (isUniqueViolation(error)) throw new AppError('SLUG_TAKEN', 'This link is already taken');
       throw error;
     }
   }
 
-  async remove(giftId: string, editToken: string | undefined): Promise<void> {
-    await this.authorize(giftId, editToken);
+  async remove(giftId: string, access: EditAccess): Promise<void> {
+    await this.authorize(giftId, access);
     // Announced first: if another module fails to clean up (stored media), the request fails while
     // the gift still exists, so the creator can simply try again and nothing is left behind.
     await this.events.publish(GiftDeletedEvent, { giftId });
@@ -463,9 +458,10 @@ export class GiftsService {
     }
   }
 
-  private async authorize(giftId: string, editToken: string | undefined): Promise<GiftWithCards> {
+  private async authorize(giftId: string, access: EditAccess): Promise<GiftWithCards> {
     const gift = await this.prisma.gift.findUnique({ where: { id: giftId }, include: WITH_CARDS });
     if (!gift) throw new AppError('NOT_FOUND', 'Gift not found');
+    const { editToken } = access;
     if (!editToken || !editTokenMatches(editToken, gift.editTokenHash)) {
       throw new AppError('UNAUTHORIZED', 'A valid edit token is required');
     }
@@ -549,13 +545,39 @@ export class GiftsService {
     return new MediaUrlPolicy(this.env.MEDIA_PUBLIC_URL, giftId);
   }
 
-  private view(gift: GiftWithCards): GiftEditorView {
+  /**
+   * Whether this request may change the gift. After publication a gift accepts new editing
+   * sessions for a limited time; a session that was open before that time ended goes on, as long
+   * as it keeps presenting the grant of its last answer (each answer renews it). A lock by hand
+   * ends every session.
+   */
+  private canEdit(gift: GiftWithCards, access: EditAccess, now = new Date()): boolean {
+    if (!isLocked(gift, now)) return true;
+    if (isLockedByHand(gift, now) || !access.session) return false;
+    try {
+      const claims = this.grants.verify(access.session, now);
+      return claims.giftId === gift.id && claims.editing;
+    } catch {
+      return false;
+    }
+  }
+
+  /** A delivered gift must not be reused for someone else: once locked, nothing changes. */
+  private assertEditable(gift: GiftWithCards, access: EditAccess): void {
+    if (!this.canEdit(gift, access)) {
+      throw locked('GIFT', 'This gift was delivered and can no longer be edited');
+    }
+  }
+
+  private view(gift: GiftWithCards, access: EditAccess = {}): GiftEditorView {
+    const editing = this.canEdit(gift, access);
     const grant = this.grants.issue({
       giftId: gift.id,
       slug: gift.slug,
       plan: planOf(gift),
       published: gift.status === 'PUBLISHED',
+      editing,
     });
-    return toEditorView(gift, this.env.WEB_ORIGIN, grant, new Date());
+    return toEditorView(gift, this.env.WEB_ORIGIN, grant, !editing);
   }
 }

@@ -158,5 +158,10 @@ export const PublicGiftSchema = z.object({
 export type PublicGift = z.infer<typeof PublicGiftSchema>;
 
 export const EDIT_TOKEN_HEADER = 'x-edit-token';
+/**
+ * Carries the grant of the last answer back to the editor endpoints. It proves that the editor was
+ * opened while the gift could still be edited, which keeps that session editing after the window.
+ */
+export const EDIT_SESSION_HEADER = 'x-edit-session';
 
 export { CardTypeSchema };

@@ -93,10 +93,8 @@ How to check a dump by restoring it into a scratch database is in
 - **Expired gifts:** every night (03:15 UTC) the API deletes drafts older than 7 days and free gifts
   published more than a year ago, with their files in R2. Paid gifts are never deleted. Look for
   `GiftLifecycle` in the API logs.
-- **Anniversary email:** every day (09:00 UTC) the API emails the buyer of each paid gift published a year
-  ago. It needs `MAIL_DRIVER=resend`, `RESEND_API_KEY` and `MAIL_FROM` in the host `.env`, and the sender's
-  domain verified in Resend (DNS records in Cloudflare). Until that is set nothing is sent and nothing is
-  lost: the emails go out on the first run after it is configured.
+- **Anniversary email:** switched off for now (technical debt). The API schedules no email job, so
+  `MAIL_DRIVER` stays `log` and no mail provider has to be set up.
 - **Guessing links:** a client that opens 30 links leading to no gift within ten minutes is refused every
   gift for the rest of those ten minutes, and the link availability check allows 60 calls per ten minutes
   (`LINK_LOOKUP_MISS_LIMIT`, `SLUG_CHECK_LIMIT`, per client IP, in memory per API instance). Many people

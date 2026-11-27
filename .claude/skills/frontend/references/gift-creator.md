@@ -5,24 +5,27 @@ panel, or how the edit token is kept.
 
 ## Components (`apps/web/src/features/gift-creator/components`)
 
-| Component       | File                | Does                                                                                                                                                                   |
-| --------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CreateStart`   | `CreateStart.tsx`   | Entry at `/create`. No saved gifts: creates one at once (`createGift` with the UI locale) and navigates. Otherwise lists them plus a "new" button.                     |
-| `EditorGate`    | `EditorGate.tsx`    | Resolves the edit token for a gift (fragment first, then storage) and renders its children with it, or the "no access" screen.                                         |
-| `GiftEditor`    | `GiftEditor.tsx`    | The whole editor page: header with plan badge, sections 1 names, 2 story, 3 surprise, share panel, danger zone, sticky bar (PRO summary, preview button), both sheets. |
-| `DangerZone`    | `DangerZone.tsx`    | Irreversible deletion in two steps: ask, then type the confirmation word. Exports `isDeleteConfirmation`.                                                              |
-| `CardList`      | `CardList.tsx`      | Cards in order with edit, move up/down (`reorderCards`) and remove.                                                                                                    |
-| `CardSheet`     | `CardSheet.tsx`     | Bottom sheet with the form of one card (new or existing). Exports `CardFormState` and `toCardInput`.                                                                   |
-| `ImagePicker`   | `MediaInputs.tsx`   | Picks a photo, compresses it, uploads it, shows it with change / remove.                                                                                               |
-| `AudioInput`    | `MediaInputs.tsx`   | Records a voice note or picks an audio file, uploads it, shows a player.                                                                                               |
-| `RevealSection` | `RevealSection.tsx` | Template picker (from `RevealTemplateSchema.options`) and the surprise fields: headline, message, detail, photo.                                                       |
-| `SavedInput`    | `SavedInput.tsx`    | Text control with its own draft that saves on blur if the trimmed text changed, and when the editor asks before leaving the page.                                      |
-| `SharePanel`    | `SharePanel.tsx`    | Public link, QR preview and downloads (published only), pending custom link, private edit link.                                                                        |
+| Component       | File                | Does                                                                                                                                                                                                     |
+| --------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreateStart`   | `CreateStart.tsx`   | Entry at `/create`. No saved gifts: creates one at once (`createGift` with the UI locale) and navigates. Otherwise lists them plus a "new" button.                                                       |
+| `EditorGate`    | `EditorGate.tsx`    | Resolves the edit token for a gift (fragment first, then storage) and renders its children with it, or the "no access" screen.                                                                           |
+| `GiftEditor`    | `GiftEditor.tsx`    | The whole editor page: header with plan badge, sections 1 names, 2 story, 3 surprise, share panel, danger zone, sticky bar (PRO summary, preview button), both sheets.                                   |
+| `DangerZone`    | `DangerZone.tsx`    | Irreversible deletion in two steps: ask, then type the confirmation word. Exports `isDeleteConfirmation`.                                                                                                |
+| `CardList`      | `CardList.tsx`      | Cards in order with edit, move up/down (`reorderCards`) and remove.                                                                                                                                      |
+| `CardSheet`     | `CardSheet.tsx`     | Bottom sheet with the form of one card (new or existing). Exports `CardFormState` and `toCardInput`.                                                                                                     |
+| `ImagePicker`   | `MediaInputs.tsx`   | Picks a photo, compresses it, uploads it, shows it with change / remove.                                                                                                                                 |
+| `AudioInput`    | `MediaInputs.tsx`   | Records a voice note or picks an audio file, uploads it, shows a player.                                                                                                                                 |
+| `RevealSection` | `RevealSection.tsx` | Template picker (from `RevealTemplateSchema.options`) and the surprise fields: headline, message, detail, photo.                                                                                         |
+| `SavedInput`    | `SavedInput.tsx`    | Text control with its own draft that saves on blur if the trimmed text changed, when the editor asks before leaving the page, and by itself when an answer leaves it showing a text that was never sent. |
+| `SharePanel`    | `SharePanel.tsx`    | Public link, QR preview and downloads (published only), pending custom link, private edit link.                                                                                                          |
 
 ## `useGiftEditor` (`apps/web/src/features/gift-creator/useGiftEditor.ts`)
 
 - Loads the gift with `useQuery`. Query key: `['gift', giftId, editToken]`. The token is in the key on
   purpose, so falling back from a refused link token to the stored one reloads.
+- `giftApi(giftId, editToken, lastGrant)` sends the grant of the cached gift back with every editor call
+  (`x-edit-session`). After the 48 hours the server only accepts changes from an editor that was opened in
+  time and proves it this way; an editor opened later gets `gift.locked`.
 - One `useMutation` runs every change. Its `scope` id is `gift-<giftId>`, so changes of one gift run one at
   a time and responses cannot arrive out of order. Every endpoint answers with the whole updated gift, which
   `onSuccess` writes into the query cache. There are no optimistic updates.

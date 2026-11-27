@@ -19,10 +19,10 @@ export class GiftLifecycleCron {
     await this.run('Expired gifts deleted', () => this.lifecycle.deleteExpired());
   }
 
-  @Cron('0 9 * * *', { name: 'send-anniversary-emails', timeZone: 'UTC' })
-  async sendAnniversaryEmails(): Promise<void> {
-    await this.run('Anniversary emails sent', () => this.lifecycle.sendAnniversaryEmails());
-  }
+  // TECH DEBT (owner's decision, 2026-11-27): the anniversary email is switched off, so its job
+  // is not scheduled. `GiftLifecycleService.sendAnniversaryEmails` and its tests stay. What has
+  // to be solved before scheduling it again is listed under "Anniversary email" in
+  // `.claude/skills/backend/references/gifts.md`.
 
   /** A failed job must not take the process down; the next day's run picks up what was left. */
   private async run(what: string, job: () => Promise<number>): Promise<void> {

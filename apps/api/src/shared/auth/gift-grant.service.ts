@@ -11,6 +11,12 @@ const GrantClaimsSchema = z.object({
   slug: z.string(),
   plan: PlanSchema,
   published: z.boolean(),
+  /**
+   * Whether the holder may change the gift. A grant is only issued with it while the gift is
+   * editable, or to a holder who presents one that has it: an editing session goes on past the
+   * end of the correction window for as long as its grants are renewed.
+   */
+  editing: z.boolean().default(false),
   /** Expiry, in seconds since the epoch. */
   exp: z.number().int(),
 });
@@ -31,7 +37,7 @@ export class GiftGrantService {
   }
 
   issue(
-    claims: Omit<GiftGrantClaims, 'exp'>,
+    claims: Omit<z.input<typeof GrantClaimsSchema>, 'exp'>,
     now = new Date(),
   ): { grant: string; expiresAt: Date } {
     const exp = Math.floor(now.getTime() / 1000) + GRANT_TTL_SECONDS;

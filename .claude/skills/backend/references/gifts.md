@@ -135,12 +135,24 @@ A delivered gift must not be reused for someone else.
   Sending the same name again is not a change.
 - `editableUntil` (shared-types) is `publishedAt` plus `EDIT_GRACE_HOURS`, or `lockedAt` if that is
   earlier. `isLocked` in `apps/api/src/modules/gifts/gift.mapper.ts` is true once that moment has passed.
-  A locked gift refuses `update`, `addCard`, `updateCard`, `removeCard` and `reorderCards` with
-  `GIFT_LOCKED`, `details.scope = 'GIFT'` (`assertEditable`).
-- `lockedAt` closes the window early. Nothing in the application sets it today; it exists for support.
+- What ends at that moment is the edit link, not an editor that is already open
+  (`GiftsService.canEdit`). Every `GiftEditorView` carries a grant with the claim `editing`; the editor
+  sends the grant of its last answer back in `x-edit-session` (`EDIT_SESSION_HEADER`). After the window,
+  a request may edit only if it presents a valid grant of this gift with `editing: true`. Such a grant
+  is issued while the gift is editable, or to a request that already holds one: an editing session that
+  was open in time goes on, renewed by every answer (also a reload), and ends when its grant runs out
+  (`GRANT_TTL_SECONDS` without a request). Opening the link after the window gets `locked: true` and a
+  grant with `editing: false`, which starts no session.
+- A request that may not edit is refused by `update`, `addCard`, `updateCard`, `removeCard` and
+  `reorderCards` with `GIFT_LOCKED`, `details.scope = 'GIFT'` (`assertEditable`).
+- `lockedAt` closes the window early and ends every open session (`isLockedByHand`). Nothing in the
+  application sets it today; it exists for support.
+- Uploads are not covered: `media` accepts a file for any valid grant. The `editing` claim is there for
+  it to use.
 - Still allowed on a locked gift: reading, `publish` (no-op), `remove`, `applyPayment`, and `changeSlug`
   for a paid link that is pending.
-- The editor view carries `publishedAt`, `editableUntil` and `locked`.
+- The editor view carries `publishedAt`, `editableUntil` and `locked`. `locked` is about the request that
+  asked: `false` for an editing session that is still going on after the window.
 
 ## Expiry
 
@@ -161,27 +173,39 @@ A delivered gift must not be reused for someone else.
   refund due). A gift that fails is logged, skipped for the rest of the run and retried on the next one.
 - The periods are constants of `packages/shared-types/src/lifecycle.ts`. Never write them elsewhere.
 
-## Anniversary email
+## Anniversary email (switched off: technical debt)
 
-`GiftLifecycleService.sendAnniversaryEmails`: gifts that are premium, published at least
-`ANNIVERSARY_YEARS` ago, with a `customerEmail` and no `anniversaryEmailSentAt`. Each gift is claimed
-first (an `updateMany` on `anniversaryEmailSentAt IS NULL`), then the email is sent through `Mailer` with
-an idempotency key; a failed send releases the claim. One email per gift, ever, also with several
-instances running the job. When `Mailer.delivers` is false (`MAIL_DRIVER=log`) the job does nothing, so
-no gift is marked and the emails go out once mail is configured. The email is written in the gift's
-language (`anniversary-email.ts`), links to the gift and has a button to `/create`; the site name in it
-is the host of `WEB_ORIGIN`. `customerEmail` arrives with `payment.succeeded`.
+Owner's decision, 2026-11-27: the feature is off for now. `gift-lifecycle.cron.ts` does not schedule it,
+so no email is ever sent. The code and its tests stay: `GiftLifecycleService.sendAnniversaryEmails`,
+`anniversary-email.ts`, `apps/api/src/shared/mail`, the columns `customer_email` and
+`anniversary_email_sent_at`, and `customerEmail` in `payment.succeeded` (still stored for paid gifts).
+
+How it works when called: gifts that are premium, published at least `ANNIVERSARY_YEARS` ago, with a
+`customerEmail` and no `anniversaryEmailSentAt`. Each gift is claimed first (an `updateMany` on
+`anniversaryEmailSentAt IS NULL`), then the email is sent through `Mailer` with an idempotency key; a
+failed send releases the claim. When `Mailer.delivers` is false (`MAIL_DRIVER=log`) it does nothing. The
+email is written in the gift's language, links to the gift and has a button to `/create`.
+
+To solve before scheduling it again (found in review, 2026-11-27):
+
+- One run takes the 200 oldest due gifts and a failed send goes back to the head of the queue: 200
+  addresses the provider always rejects would stop every later email. Needs a limit of attempts or a
+  record of permanent failures.
+- The claim is made before the send: if the process dies in between, that email is never sent.
+- The email signs with the host of `WEB_ORIGIN`, so it does not say the brand name outside production.
+- `customer_email` is kept after its only use. Clear it once the email is sent, or say so in the privacy
+  page. While the feature is off the address is stored without being used.
+- `ResendMailer` has never been run against the real service, and no test proves that a job is
+  registered with the scheduler.
+- The text of the email has not been reviewed by the owner.
 
 ## Schedules
 
 `gift-lifecycle.cron.ts` (`@nestjs/schedule`, enabled by `ScheduleModule.forRoot()` in
-`apps/api/src/app.module.ts`): `deleteExpired` daily at 03:15 UTC, `sendAnniversaryEmails` daily at 09:00
-UTC. Every API instance runs them unless `SCHEDULED_JOBS=off` (the integration tests, which call the
-service directly); both jobs are safe to run concurrently. A failed run is logged and does not stop the
-process.
-
-Known limit: the anniversary email is claimed before it is sent. If the process dies between the two, that
-one email is never sent.
+`apps/api/src/app.module.ts`): `deleteExpired` daily at 03:15 UTC. Every API instance runs it unless
+`SCHEDULED_JOBS=off` (the integration tests, which call the service directly); it is safe to run
+concurrently. A failed run is logged and does not stop the process. The anniversary email has no schedule
+(see above).
 
 ## Applying a payment (`applyPayment`)
 
@@ -236,6 +260,13 @@ retry. Cards and aliases go with the gift (cascade). Payment orders are kept.
 - 2026-11-24: drafts expire 7 days after creation, free gifts 1 year after publication, paid gifts never.
 - 2026-11-24: the buyer of a paid gift gets one email a year after publication, inviting them to relive it and
   to create a new one. The address comes with the payment event; payments and gifts stay decoupled.
+- 2026-11-27: what ends 48 hours after publication is the edit link. Whoever opened the editor before
+  that and is still editing keeps saving; whoever opens the link later finds the gift locked. (Chosen by
+  the implementation, not stated by the owner: the session ends after `GRANT_TTL_SECONDS` without a
+  request.)
+- 2026-11-27: the anniversary email is switched off and recorded as technical debt (section above).
+- 2026-11-27: there is no production yet, only staging. A deployment that deletes old staging gifts (the
+  expiry backfill of `20261124210813_gift_lifecycle`) needs no precaution.
 - 2026-11-24 (kept from the existing design, not what the request literally named): the edit token stays in the
   `x-edit-token` header and gifts are addressed by id (`DELETE /gifts/:giftId`), instead of a token in the
   URL path, which would end up in server logs and browser history.

@@ -31,6 +31,53 @@ describe('SavedInput', () => {
     expect(onSave).toHaveBeenLastCalledWith('Sarah');
   });
 
+  it('saves the text typed back while the save of another one was on its way', async () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<SavedInput value="Juan" maxLength={40} onSave={onSave} />);
+    const input = screen.getByRole('textbox');
+    await userEvent.type(input, ' Carlos');
+    await userEvent.tab();
+    expect(onSave).toHaveBeenCalledExactlyOnceWith('Juan Carlos');
+    // Before that save answers, the creator puts the old name back and leaves the field.
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Juan');
+    await userEvent.tab();
+    expect(onSave).toHaveBeenCalledOnce();
+
+    // The first save answers: the server has a name the field does not show.
+    rerender(<SavedInput value="Juan Carlos" maxLength={40} onSave={onSave} />);
+    expect(input).toHaveValue('Juan');
+    expect(onSave).toHaveBeenLastCalledWith('Juan');
+    expect(onSave).toHaveBeenCalledTimes(2);
+
+    rerender(<SavedInput value="Juan" maxLength={40} onSave={onSave} />);
+    expect(onSave).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send again a text whose save is still on its way', async () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<SavedInput value="Juan" maxLength={40} onSave={onSave} />);
+    const input = screen.getByRole('textbox');
+    await userEvent.type(input, ' Carlos');
+    await userEvent.tab();
+    // The answer to an earlier change arrives first, with a value that is not what was typed.
+    rerender(<SavedInput value="Juanito" maxLength={40} onSave={onSave} />);
+    expect(input).toHaveValue('Juan Carlos');
+    expect(onSave).toHaveBeenCalledExactlyOnceWith('Juan Carlos');
+  });
+
+  it('adopts a value changed elsewhere once the creator put the saved text back', async () => {
+    const onSave = vi.fn();
+    const { rerender } = render(<SavedInput value="Juan" maxLength={40} onSave={onSave} />);
+    const input = screen.getByRole('textbox');
+    await userEvent.type(input, 'x{Backspace}');
+    await userEvent.tab();
+    // The same gift was edited in another tab.
+    rerender(<SavedInput value="Tom" maxLength={40} onSave={onSave} />);
+    expect(input).toHaveValue('Tom');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it('adopts a new value when the field is not being edited', () => {
     const { rerender } = render(<SavedInput value="Sara" maxLength={40} onSave={vi.fn()} />);
     rerender(<SavedInput value="Marta" maxLength={40} onSave={vi.fn()} />);

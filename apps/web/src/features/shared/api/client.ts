@@ -24,6 +24,11 @@ export interface ApiRequest {
   body?: unknown;
   /** Secret edit token of a gift (gifts endpoints). */
   editToken?: string;
+  /**
+   * The grant of the gift's last answer, sent back to the editor endpoints: it keeps an editor
+   * that was opened in time able to save after the correction window has ended.
+   */
+  editSession?: string;
   /** Short-lived gift grant (media, QR and payment endpoints). */
   grant?: string;
   signal?: AbortSignal;
@@ -33,6 +38,7 @@ export interface ApiRequest {
 async function send(path: string, request: ApiRequest): Promise<Response> {
   const headers: Record<string, string> = {};
   if (request.editToken) headers['x-edit-token'] = request.editToken;
+  if (request.editSession) headers['x-edit-session'] = request.editSession;
   if (request.grant) headers['Authorization'] = `Bearer ${request.grant}`;
   const isForm = typeof FormData !== 'undefined' && request.body instanceof FormData;
   if (request.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';

@@ -28,11 +28,15 @@ const MAX_FIELD_ROUNDS = 5;
 
 /** Loads one gift for editing and applies changes; every change answers with the updated gift. */
 export function useGiftEditor(giftId: string, editToken: string) {
-  const api = useMemo(() => giftApi(giftId, editToken), [giftId, editToken]);
   const queryClient = useQueryClient();
   // The token is part of the key: switching to another token (a refused link falling back to the
   // stored one) loads the gift again instead of keeping the earlier error.
   const queryKey = useMemo(() => ['gift', giftId, editToken] as const, [giftId, editToken]);
+  const api = useMemo(
+    () =>
+      giftApi(giftId, editToken, () => queryClient.getQueryData<GiftEditorView>(queryKey)?.grant),
+    [giftId, editToken, queryClient, queryKey],
+  );
   const query = useQuery({ queryKey, queryFn: api.get });
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(null);
   const [failed, setFailed] = useState(false);

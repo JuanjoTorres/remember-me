@@ -49,17 +49,26 @@ export function editableUntilOf(gift: Gift): Date | null {
   return gift.lockedAt;
 }
 
-/** Whether the gift can no longer be edited: its correction window ended, or it was locked. */
+/**
+ * Whether the gift no longer accepts new editing sessions: its correction window ended, or it was
+ * locked.
+ */
 export function isLocked(gift: Gift, now: Date): boolean {
   const until = editableUntilOf(gift);
   return until !== null && until <= now;
+}
+
+/** Whether the gift was locked by hand, which also ends the editing sessions that are open. */
+export function isLockedByHand(gift: Gift, now: Date): boolean {
+  return gift.lockedAt !== null && gift.lockedAt <= now;
 }
 
 export function toEditorView(
   gift: GiftWithCards,
   webOrigin: string,
   grant: { grant: string; expiresAt: Date },
-  now: Date,
+  /** Whether whoever asks can no longer edit the gift. */
+  locked: boolean,
 ): GiftEditorView {
   const plan = planOf(gift);
   const cards = toCards(gift.cards);
@@ -78,7 +87,7 @@ export function toEditorView(
     proFeatures: proFeaturesOf({ cards, reveal }),
     publishedAt: gift.publishedAt?.toISOString() ?? null,
     editableUntil: editableUntilOf(gift)?.toISOString() ?? null,
-    locked: isLocked(gift, now),
+    locked,
     expiresAt: gift.expiresAt?.toISOString() ?? null,
     customSlugPending: gift.customSlugPending,
     publicUrl: publicUrlOf(webOrigin, gift.slug),
