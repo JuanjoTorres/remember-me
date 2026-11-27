@@ -4,23 +4,60 @@ import {
   deliverPaidWebhook,
   fillSurprise,
   lastCheckoutSession,
+  openPreview,
   startGift,
 } from './helpers';
 
-test('a creator upgrades with a custom link, and the recipient scratches the surprise', async ({
+test('a creator uses PRO features for free, pays once to publish with a custom link, and the recipient scratches the surprise', async ({
   page,
 }) => {
-  const slug = `te-quiero-marta-${Date.now().toString(36)}`;
+  // The ending of a custom link is the creator's to choose, as long as it has four characters.
+  const ending = Date.now().toString(36);
+  const slug = `te-quiero-marta-${ending}`;
+  const upgrade = page.getByRole('dialog', { name: 'The full experience' });
   await startGift(page, 'Marta');
   await addTextCard(page, 'Do you remember?');
+
+  // A trivia and the scratch card, on a free draft, without paying anything yet
+  await page.getByRole('button', { name: '+ Trivia' }).click();
+  const trivia = page.getByRole('dialog', { name: 'Trivia question' });
+  await trivia.getByRole('textbox', { name: 'Question' }).fill('Where did we meet?');
+  await trivia.getByRole('textbox', { name: 'Answer 1' }).fill('Lisbon');
+  await trivia.getByRole('textbox', { name: 'Answer 2' }).fill('Porto');
+  await trivia.getByRole('radio', { name: 'Answer 2 is the correct one' }).check();
+  await trivia.getByRole('button', { name: 'Add card' }).click();
+  await expect(trivia).toBeHidden();
+  await page.getByRole('button', { name: /Scratch card/ }).click();
+  await expect(page.getByRole('button', { name: /Scratch card/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(upgrade).toBeHidden();
+  await expect(page.getByTestId('pro-summary')).toContainText('Trivia · Premium reveal');
   await fillSurprise(page, 'Weekend in Porto!');
 
-  // "Publish without watermark" opens the upgrade sheet with the prices from the API
-  await page.getByRole('button', { name: 'Publish without watermark' }).click();
-  const upgrade = page.getByRole('dialog', { name: 'The full experience' });
+  // The preview plays the PRO features too
+  await openPreview(page);
+  await expect(page.getByRole('heading', { name: 'For Marta' })).toBeVisible();
+  await expect(page.getByTestId('publish-note')).toContainText('PRO: Trivia · Premium reveal');
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('Where did we meet?')).toBeVisible();
+
+  // Publishing is where it is paid for: the sheet opens with the prices from the API
+  await page.getByRole('button', { name: 'Publish and get QR' }).click();
+  await expect(upgrade.getByText(/uses PRO features\. One payment publishes it/)).toBeVisible();
+  await expect(upgrade.getByText('An eternal memory: it never expires')).toBeVisible();
   await expect(upgrade.getByRole('button', { name: 'Pay €4.99' })).toBeVisible();
+  await expect(page).toHaveURL(/\/preview$/);
   await upgrade.getByRole('checkbox').check();
-  await upgrade.getByRole('textbox', { name: 'Custom link' }).fill(slug);
+  // The link starts from the recipient's name with a random ending
+  await expect(upgrade.getByTestId('slug-preview')).toHaveText(
+    /^localhost:3000\/for\/marta-[a-z0-9]{4}$/,
+  );
+  await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('te-quiero-marta');
+  await upgrade.getByRole('textbox', { name: 'Ending' }).fill(ending);
+  await expect(upgrade.getByTestId('slug-preview')).toHaveText(`localhost:3000/for/${slug}`);
   await expect(upgrade.getByText('Available')).toBeVisible();
   await upgrade.getByRole('button', { name: 'Pay €6.98' }).click();
 
@@ -61,22 +98,21 @@ test('a creator upgrades with a custom link, and the recipient scratches the sur
     expect((await download).suggestedFilename()).toBe(`remember-me-${slug}.${extension}`);
   }
 
-  // Back in the editor everything is unlocked: trivia and the scratch card
+  // A taken link gets three free alternatives with the same name
+  const check = (await (
+    await fetch(`http://localhost:4000/gifts/check-slug?slug=${slug}`)
+  ).json()) as { available: boolean; reason: string; suggestions: string[] };
+  expect(check).toMatchObject({ available: false, reason: 'TAKEN' });
+  expect(check.suggestions).toHaveLength(3);
+  for (const suggestion of check.suggestions) {
+    expect(suggestion).toMatch(/^te-quiero-marta-[a-z0-9]{4}$/);
+  }
+
+  // Back in the editor it is the full experience, with the name fixed
   await page.getByRole('link', { name: 'Back to the editor' }).click();
   await expect(page.getByText('Full experience')).toBeVisible();
-  await page.getByRole('button', { name: '+ Trivia' }).click();
-  const trivia = page.getByRole('dialog', { name: 'Trivia question' });
-  await trivia.getByRole('textbox', { name: 'Question' }).fill('Where did we meet?');
-  await trivia.getByRole('textbox', { name: 'Answer 1' }).fill('Lisbon');
-  await trivia.getByRole('textbox', { name: 'Answer 2' }).fill('Porto');
-  await trivia.getByRole('radio', { name: 'Answer 2 is the correct one' }).check();
-  await trivia.getByRole('button', { name: 'Add card' }).click();
-  await expect(trivia).toBeHidden();
-  await page.getByRole('button', { name: /Scratch card/ }).click();
-  await expect(page.getByRole('button', { name: /Scratch card/ })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(page.getByRole('textbox', { name: /^For/ })).toBeDisabled();
+  await expect(page.getByTestId('pro-summary')).toHaveCount(0);
 
   // --- The recipient ---
   const recipient = await page
@@ -159,7 +195,11 @@ test('a payment is confirmed on the return page even if the webhook never arrive
   await startGift(page, 'Lucia');
   await addTextCard(page, 'For you');
   await fillSurprise(page, 'Dinner on Saturday');
-  await page.getByRole('button', { name: 'Publish without watermark' }).click();
+  // Nothing PRO in it: it could be published free, but the creator wants it without watermark.
+  await openPreview(page);
+  await page
+    .getByRole('button', { name: 'Remove the watermark, pick the link, keep it forever' })
+    .click();
   const upgrade = page.getByRole('dialog', { name: 'The full experience' });
 
   // The customer pays at "Stripe" before being sent back; no webhook is delivered at all.

@@ -9,6 +9,8 @@ export const PaymentSucceededEvent = defineEvent(
     giftId: z.uuid(),
     /** Custom link bought with the order bump, if any. */
     customSlug: z.string().nullable(),
+    /** Email the buyer gave at checkout. Absent in events stored before it existed. */
+    customerEmail: z.string().nullable().optional(),
   }),
 );
 export type PaymentSucceededPayload = z.infer<typeof PaymentSucceededEvent.schema>;

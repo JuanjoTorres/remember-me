@@ -36,6 +36,9 @@ fails on any foreign key touching a `payment_` table. Never add a relation field
 - `custom_slug_pending`: a custom link was paid for but could not be applied; the creator may pick one.
 - `edit_token_hash`: SHA-256 of the edit token. The token is never stored.
 - `status` (`GiftStatus`: `DRAFT`, `PUBLISHED`), `published_at`.
+- `locked_at` (nullable): closes the correction window early. `expires_at` (nullable, indexed): when the
+  gift is deleted; `NULL` means never. `customer_email` (nullable): the buyer's address, from the payment
+  event. `anniversary_email_sent_at` (nullable): set when the anniversary email was claimed.
 - `is_premium`: the plan. There is no plan column; `planOf` derives it.
 - `applied_order_ids`: text array of payment order ids already applied. Plain values, no relation. This is
   the idempotency record of `applyPayment`.
@@ -69,6 +72,7 @@ fails on any foreign key touching a `payment_` table. Never add a relation field
   to hand out the same open session again.
 - `include_custom_slug`, `custom_slug`: what was ordered.
 - `amount_total` (smallest currency unit) and `currency`: as reported by Stripe when paid.
+- `customer_email` (nullable): the address typed in Stripe Checkout, stored when the order is settled.
 - `created_at`, `paid_at`.
 
 ### `payment_webhook_logs`
@@ -80,13 +84,22 @@ fails on any foreign key touching a `payment_` table. Never add a relation field
 
 Committed under `apps/api/prisma/migrations`, in order:
 
-| Folder                                 | Adds                                                           |
-| -------------------------------------- | -------------------------------------------------------------- |
-| `20261122230003_gifts`                 | `gifts`, `gift_cards`, their enums                             |
-| `20261122230713_media_assets`          | `media_assets`, `MediaKind`                                    |
-| `20261122231357_payments`              | `payment_orders`, `payment_webhook_logs`, `PaymentOrderStatus` |
-| `20261122231508_gift_links_and_orders` | `gifts.applied_order_ids`, `gift_slug_aliases`                 |
-| `20261122232257_payment_refund_due`    | enum value `REFUND_DUE`, `payment_orders.checkout_url`         |
+| Folder                                  | Adds                                                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20261122230003_gifts`                  | `gifts`, `gift_cards`, their enums                                                                                                                |
+| `20261122230713_media_assets`           | `media_assets`, `MediaKind`                                                                                                                       |
+| `20261122231357_payments`               | `payment_orders`, `payment_webhook_logs`, `PaymentOrderStatus`                                                                                    |
+| `20261122231508_gift_links_and_orders`  | `gifts.applied_order_ids`, `gift_slug_aliases`                                                                                                    |
+| `20261122232257_payment_refund_due`     | enum value `REFUND_DUE`, `payment_orders.checkout_url`                                                                                            |
+| `20261124210813_gift_lifecycle`         | `gifts.locked_at`, `expires_at` (indexed), `customer_email`, `anniversary_email_sent_at`; `payment_orders.customer_email`; backfills `expires_at` |
+| `20261127150000_free_gift_three_months` | Data only: `expires_at` of free published gifts becomes three months from publication                                                             |
+
+`20261127150000_free_gift_three_months` changes no table: it sets `expires_at` of free published gifts to
+three months from their publication, the rule since 2026-11-27. A free gift published more than three
+months before it runs expires at once and is deleted, with its files, by the next nightly clean-up.
+
+The lifecycle migration backfills by hand-written SQL: existing unpaid drafts get a week from the day it
+runs, existing free published gifts a year from their publication, paid gifts stay `NULL`.
 
 To create one:
 

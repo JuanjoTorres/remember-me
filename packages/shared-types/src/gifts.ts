@@ -3,6 +3,7 @@ import {
   CardTypeSchema,
   PlanCapabilitiesSchema,
   PlanSchema,
+  ProFeatureSchema,
   RevealTemplateSchema,
 } from './plans.js';
 import { CustomSlugSchema } from './slug.js';
@@ -118,6 +119,15 @@ export const GiftEditorViewSchema = z.object({
   senderName: z.string(),
   reveal: RevealSchema,
   cards: z.array(CardSchema),
+  /** Paid features the content uses. A free gift that has any must be paid for to be published. */
+  proFeatures: z.array(ProFeatureSchema),
+  publishedAt: z.iso.datetime().nullable(),
+  /** Until when a published gift can still be corrected. `null` for a draft. */
+  editableUntil: z.iso.datetime().nullable(),
+  /** The correction window is over: nothing can be edited any more, only deleted. */
+  locked: z.boolean(),
+  /** When the gift and its files are deleted. `null` means never (a paid gift). */
+  expiresAt: z.iso.datetime().nullable(),
   /** A paid custom link could not be applied (it was taken); the creator may choose another. */
   customSlugPending: z.boolean(),
   /** Public URL of the gift. Only meaningful once published. */
@@ -148,5 +158,10 @@ export const PublicGiftSchema = z.object({
 export type PublicGift = z.infer<typeof PublicGiftSchema>;
 
 export const EDIT_TOKEN_HEADER = 'x-edit-token';
+/**
+ * Carries the grant of the last answer back to the editor endpoints. It proves that the editor was
+ * opened while the gift could still be edited, which keeps that session editing after the window.
+ */
+export const EDIT_SESSION_HEADER = 'x-edit-session';
 
 export { CardTypeSchema };

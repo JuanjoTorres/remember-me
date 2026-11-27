@@ -15,18 +15,19 @@ Everything is re-exported from `packages/shared-types/src/index.ts`. A new file 
 
 ## Files
 
-| File                                    | Exports                                                                                                                                                                                                                                                                                                                                         |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared-types/src/plans.ts`    | `PlanSchema`, `CardTypeSchema`, `RevealTemplateSchema`, `QrFormatSchema`, `PlanCapabilitiesSchema`, `PLAN_CAPABILITIES`, `MAX_CARDS_HARD_LIMIT`, `planOf`, `PremiumCapabilitySchema`, `PlanCheck`, `checkAddCard`, `checkRevealTemplate`, `checkQrFormat`                                                                                       |
-| `packages/shared-types/src/gifts.ts`    | `LocaleSchema`, `GiftStatusSchema`, `CARD_TEXT_MAX`, the three card payload schemas, `CardInputSchema`, `CardSchema`, `ReorderCardsRequestSchema`, `RevealSchema`, `CreateGiftRequestSchema`, `UpdateGiftRequestSchema`, `ChangeSlugRequestSchema`, `GiftEditorViewSchema`, `CreateGiftResponseSchema`, `PublicGiftSchema`, `EDIT_TOKEN_HEADER` |
-| `packages/shared-types/src/slug.ts`     | `SLUG_MIN_LENGTH`, `SLUG_MAX_LENGTH`, `RESERVED_SLUGS`, `SlugSchema`, `CustomSlugSchema`, `slugify`, `SlugAvailabilitySchema`                                                                                                                                                                                                                   |
-| `packages/shared-types/src/media.ts`    | `MediaKindSchema`, `MediaUploadResponseSchema`, `MEDIA_LIMITS`                                                                                                                                                                                                                                                                                  |
-| `packages/shared-types/src/payments.ts` | `CheckoutSessionRequestSchema`, `CheckoutSessionResponseSchema`, `PriceSchema`, `PricesResponseSchema`, `PaymentConfirmationSchema`                                                                                                                                                                                                             |
-| `packages/shared-types/src/errors.ts`   | `ErrorCodeSchema`, `PremiumRequiredDetailsSchema`, `ApiErrorSchema`                                                                                                                                                                                                                                                                             |
-| `packages/shared-types/src/health.ts`   | `HealthResponseSchema`                                                                                                                                                                                                                                                                                                                          |
+| File                                     | Exports                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared-types/src/plans.ts`     | `PlanSchema`, `CardTypeSchema`, `RevealTemplateSchema`, `QrFormatSchema`, `PlanCapabilitiesSchema`, `PLAN_CAPABILITIES`, `MAX_CARDS_HARD_LIMIT`, `planOf`, `PremiumCapabilitySchema`, `PlanCheck`, `checkAddCard`, `checkRevealTemplate`, `checkQrFormat`, `ProFeatureSchema`, `proFeaturesOf`                                                  |
+| `packages/shared-types/src/gifts.ts`     | `LocaleSchema`, `GiftStatusSchema`, `CARD_TEXT_MAX`, the three card payload schemas, `CardInputSchema`, `CardSchema`, `ReorderCardsRequestSchema`, `RevealSchema`, `CreateGiftRequestSchema`, `UpdateGiftRequestSchema`, `ChangeSlugRequestSchema`, `GiftEditorViewSchema`, `CreateGiftResponseSchema`, `PublicGiftSchema`, `EDIT_TOKEN_HEADER` |
+| `packages/shared-types/src/slug.ts`      | `SLUG_MIN_LENGTH`, `SLUG_MAX_LENGTH`, `RESERVED_SLUGS`, `SlugSchema`, `CustomSlugSchema`, `slugify`, `SlugAvailabilitySchema`, `GENERATED_SLUG_SUFFIX_LENGTH`, `SLUG_SUFFIX_LENGTH`, `SLUG_SUFFIX_MIN_LENGTH`, `randomSlugSuffix`, `SlugSuffixSchema`, `splitSlug`, `joinSlug`, `SLUG_SUGGESTION_COUNT`                                         |
+| `packages/shared-types/src/media.ts`     | `MediaKindSchema`, `MediaUploadResponseSchema`, `MEDIA_LIMITS`                                                                                                                                                                                                                                                                                  |
+| `packages/shared-types/src/payments.ts`  | `CheckoutSessionRequestSchema`, `CheckoutSessionResponseSchema`, `PriceSchema`, `PricesResponseSchema`, `PaymentConfirmationSchema`                                                                                                                                                                                                             |
+| `packages/shared-types/src/errors.ts`    | `ErrorCodeSchema`, `PremiumRequiredDetailsSchema`, `GiftLockedDetailsSchema`, `ApiErrorSchema`                                                                                                                                                                                                                                                  |
+| `packages/shared-types/src/lifecycle.ts` | `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_MONTHS`, `EDIT_GRACE_HOURS`, `ANNIVERSARY_YEARS`, `addYears`, `addMonths`, `draftExpiry`, `freeGiftExpiry`, `editableUntil`                                                                                                                                                                                    |
+| `packages/shared-types/src/health.ts`    | `HealthResponseSchema`                                                                                                                                                                                                                                                                                                                          |
 
-Tests: `packages/shared-types/src/gifts.test.ts` (card payloads, slugs) and
-`packages/shared-types/src/plans.test.ts` (plan checks).
+Tests: `packages/shared-types/src/gifts.test.ts` (card payloads, slugs, lifecycle dates) and
+`packages/shared-types/src/plans.test.ts` (plan checks, `proFeaturesOf`).
 
 ## Error codes
 
@@ -44,6 +45,7 @@ an HTTP status. It is a `Record<ErrorCode, number>`, so a code without a status 
 | `PAYLOAD_TOO_LARGE` | 413    | Upload over the size limit (raised by the file interceptor)                  |
 | `UNSUPPORTED_MEDIA` | 415    | File content is not an accepted image or audio format                        |
 | `GIFT_INCOMPLETE`   | 422    | Publish requirements; details `{ missing: [...] }`                           |
+| `GIFT_LOCKED`       | 423    | Edit of a delivered gift; details follow `GiftLockedDetailsSchema`           |
 | `RATE_LIMITED`      | 429    | Throttler                                                                    |
 | `INTERNAL`          | 500    | Anything unexpected                                                          |
 
@@ -63,13 +65,30 @@ not repeat them in code, tests of other packages, or messages.
   capability, and the web opens the matching upgrade prompt. A new `PremiumCapabilitySchema` value needs a
   matching trigger in the web app.
 - `MAX_CARDS_HARD_LIMIT` is a technical ceiling for every plan, not a plan feature.
+- The checks are applied to published gifts only. A draft may use everything; `proFeaturesOf` then tells
+  which paid features (`ProFeatureSchema`: `EXTRA_CARDS`, `VOICE_NOTE`, `TRIVIA`, `PREMIUM_REVEAL`) its
+  content uses, measured against `PLAN_CAPABILITIES.FREE`. Publishing a FREE gift that uses any answers
+  `PREMIUM_REQUIRED` with capability `PRO_FEATURES` and the list in `details.proFeatures`.
 - The plan of a gift is derived with `planOf` from `isPremium`. There is no plan column.
 
 ## Slug rules
 
 `SlugSchema`: length between `SLUG_MIN_LENGTH` and `SLUG_MAX_LENGTH`, lowercase letters, digits and single
-hyphens, no hyphen at either end. `CustomSlugSchema` additionally refuses `RESERVED_SLUGS` (route names
-and words that must not become links). `slugify` turns free text into slug form and may return a string
+hyphens, no hyphen at either end. `CustomSlugSchema` additionally requires a name followed by an ending
+(`splitSlug`: the last hyphen-separated part, at least `SLUG_SUFFIX_MIN_LENGTH` letters or digits) and
+refuses a name in `RESERVED_SLUGS` (route names and words that must not become links). `joinSlug` builds
+a link from a name and an ending and shortens the name to fit. Generated links use an ending of
+`GENERATED_SLUG_SUFFIX_LENGTH`; `SLUG_SUFFIX_LENGTH` is only the random ending proposed for a custom link.
+`randomSlugSuffix(length)` draws without bias and uses Web Crypto, which
+exists in Node and in browsers; the package declares it locally because it loads no platform types.
+
+## Lifecycle periods
+
+`packages/shared-types/src/lifecycle.ts` holds `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_MONTHS`,
+`EDIT_GRACE_HOURS`, `ANNIVERSARY_YEARS` and the date helpers `draftExpiry`, `freeGiftExpiry`,
+`editableUntil`, `addYears`, `addMonths`. The API computes with them and the web shows them; never repeat a period in
+code or in a message.
+`slugify` turns free text into slug form and may return a string
 too short to be valid (even empty): validate its result.
 
 ## Text and media fields
@@ -90,7 +109,8 @@ local `mediaUrl` helper; the API further restricts them to files of the same gif
 
 ## Decisions
 
-None recorded yet.
+- 2026-11-24: see the decisions in `.claude/skills/backend/references/gifts.md`; the periods and the link ending
+  length they name are the constants listed here.
 
 ## Change checklist
 

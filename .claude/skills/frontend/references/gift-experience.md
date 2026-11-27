@@ -29,8 +29,13 @@ state between cards.
 `experience` namespace: the gift is shown in the language it was written in, whatever the phone's language
 is. It
 returns the `ExperienceLabels` object (declared in `GiftExperience.tsx`), including the nested `reveal`
-labels (`RevealLabels`). Names are interpolated here (`coverFor`, `coverFrom`; an empty sender gives an empty
-string and the line is not rendered), and the watermark text gets `BRAND_NAME`.
+labels (`RevealLabels`). The object itself is built by `buildExperienceLabels`
+(`apps/web/src/features/gift-experience/build-labels.ts`), a pure function that takes a translator of the
+`experience` namespace: names are interpolated there (`coverFor`, `coverFrom`; an empty sender gives an
+empty string and the line is not rendered), and the watermark text gets `BRAND_NAME`. The creator's
+preview calls the same function in the browser
+(`apps/web/src/app/(main)/create/[giftId]/preview/PreviewScreen.tsx`), so preview and recipient page
+cannot drift apart.
 
 Client components in this feature never call `useTranslations`: there is no provider on this route. A new
 text means a new key in `ExperienceLabels`, a line in `experienceLabels`, and the message in both languages.
@@ -51,7 +56,9 @@ after the surprise.
 
 ## `GiftExperience` (`apps/web/src/features/gift-experience/GiftExperience.tsx`)
 
-- Layout: `h-dvh`, `max-w-md`, dark, `select-none`, `lang` set to the gift's locale.
+- Layout: `h-dvh`, `max-w-md`, dark, `select-none`, `lang` set to the gift's locale. With the `embedded`
+  prop it fills its container (`h-full`) instead of the screen and renders a `div` instead of the `main`
+  landmark; only the creator's preview uses it.
 - Progress bar: one segment per step, padded by the top safe area.
 - Tap zones on every step except the reveal: the left third goes back, the rest goes forward; they are real
   buttons labelled with `labels.previous` / `labels.next` and disabled when the move is not allowed.
@@ -101,7 +108,7 @@ None recorded yet.
 
 ## Change checklist
 
-- New text: `ExperienceLabels`, `experienceLabels`, both message files (`experience` namespace), and the
+- New text: `ExperienceLabels`, `buildExperienceLabels`, both message files (`experience` namespace), and the
   `labels` fixture in `apps/web/src/features/gift-experience/GiftExperience.test.tsx`.
 - New card type: a component in the `cards` folder, a branch in `GiftExperience.tsx`, `mediaOf` in
   `stories.ts` if it carries media; plus the editor and contract side

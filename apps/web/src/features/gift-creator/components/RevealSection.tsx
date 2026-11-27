@@ -18,7 +18,8 @@ const ICONS: Record<RevealTemplate, string> = {
 /** The surprise at the end: how it is revealed and what it says. */
 export function RevealSection({ gift, editor }: { gift: GiftEditorView; editor: GiftEditor }) {
   const t = useTranslations('creator');
-  const save = (reveal: Partial<Reveal>) => void editor.run((api) => api.update({ reveal }));
+  const save = (reveal: Partial<Reveal>, fromField = false) =>
+    void editor.run((api) => api.update({ reveal }), fromField);
 
   return (
     <div className="space-y-4">
@@ -65,7 +66,8 @@ export function RevealSection({ gift, editor }: { gift: GiftEditorView; editor: 
           value={gift.reveal.headline}
           maxLength={60}
           placeholder={t('revealHeadlinePlaceholder')}
-          onSave={(headline) => save({ headline })}
+          register={editor.registerField}
+          onSave={(headline) => save({ headline }, true)}
         />
       </Field>
       <Field label={t('revealMessage')}>
@@ -74,7 +76,8 @@ export function RevealSection({ gift, editor }: { gift: GiftEditorView; editor: 
           value={gift.reveal.message}
           maxLength={500}
           placeholder={t('revealMessagePlaceholder')}
-          onSave={(message) => save({ message })}
+          register={editor.registerField}
+          onSave={(message) => save({ message }, true)}
         />
       </Field>
       <Field label={t('revealDetail')} hint={t('revealDetailHint')}>
@@ -82,7 +85,8 @@ export function RevealSection({ gift, editor }: { gift: GiftEditorView; editor: 
           value={gift.reveal.detail}
           maxLength={60}
           placeholder={t('revealDetailPlaceholder')}
-          onSave={(detail) => save({ detail })}
+          register={editor.registerField}
+          onSave={(detail) => save({ detail }, true)}
         />
       </Field>
       <div>

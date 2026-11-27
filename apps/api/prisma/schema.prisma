@@ -28,32 +28,40 @@ enum RevealTemplate {
 }
 
 model Gift {
-  id                String         @id @default(uuid()) @db.Uuid
-  slug              String         @unique
+  id                     String          @id @default(uuid()) @db.Uuid
+  slug                   String          @unique
   /// True once the creator chose the slug (paid custom link); generated slugs may be replaced on publish.
-  slugIsCustom      Boolean        @default(false) @map("slug_is_custom")
-  customSlugPending Boolean        @default(false) @map("custom_slug_pending")
+  slugIsCustom           Boolean         @default(false) @map("slug_is_custom")
+  customSlugPending      Boolean         @default(false) @map("custom_slug_pending")
   /// SHA-256 of the secret edit token. The token itself is never stored.
-  editTokenHash     String         @map("edit_token_hash")
-  status            GiftStatus     @default(DRAFT)
-  isPremium         Boolean        @default(false) @map("is_premium")
+  editTokenHash          String          @map("edit_token_hash")
+  status                 GiftStatus      @default(DRAFT)
+  isPremium              Boolean         @default(false) @map("is_premium")
   /// Payment orders already applied to the gift. Plain values (no relation): they make applying a
   /// payment idempotent however often and in whatever order its event is delivered.
-  appliedOrderIds   String[]       @default([]) @map("applied_order_ids")
-  locale            String         @default("en")
-  recipientName     String         @default("") @map("recipient_name")
-  senderName        String         @default("") @map("sender_name")
-  revealTemplate    RevealTemplate @default(BASIC) @map("reveal_template")
-  revealHeadline    String         @default("") @map("reveal_headline")
-  revealMessage     String         @default("") @map("reveal_message")
-  revealDetail      String         @default("") @map("reveal_detail")
-  revealImageUrl    String?        @map("reveal_image_url")
-  publishedAt       DateTime?      @map("published_at")
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  cards             GiftCard[]
-  slugAliases       GiftSlugAlias[]
+  appliedOrderIds        String[]        @default([]) @map("applied_order_ids")
+  locale                 String          @default("en")
+  recipientName          String          @default("") @map("recipient_name")
+  senderName             String          @default("") @map("sender_name")
+  revealTemplate         RevealTemplate  @default(BASIC) @map("reveal_template")
+  revealHeadline         String          @default("") @map("reveal_headline")
+  revealMessage          String          @default("") @map("reveal_message")
+  revealDetail           String          @default("") @map("reveal_detail")
+  revealImageUrl         String?         @map("reveal_image_url")
+  publishedAt            DateTime?       @map("published_at")
+  /// Closes the correction window before its normal end. Nothing sets it yet; edits honour it.
+  lockedAt               DateTime?       @map("locked_at")
+  /// When the gift and its files are deleted. Null means never: a paid gift is kept for good.
+  expiresAt              DateTime?       @map("expires_at")
+  /// Buyer's email, as reported with the payment. Only used for the anniversary email.
+  customerEmail          String?         @map("customer_email")
+  anniversaryEmailSentAt DateTime?       @map("anniversary_email_sent_at")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  cards                  GiftCard[]
+  slugAliases            GiftSlugAlias[]
 
+  @@index([expiresAt])
   @@map("gifts")
 }
 
@@ -125,6 +133,8 @@ model PaymentOrder {
   /// Amount charged, in the smallest currency unit, as reported by Stripe.
   amountTotal       Int?               @map("amount_total")
   currency          String?
+  /// Email the customer gave in Stripe Checkout. Travels with `payment.succeeded`.
+  customerEmail     String?            @map("customer_email")
   createdAt         DateTime           @default(now()) @map("created_at")
   paidAt            DateTime?          @map("paid_at")
 

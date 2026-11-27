@@ -3,12 +3,22 @@ import type { INestApplication } from '@nestjs/common';
 import {
   ApiErrorSchema,
   CreateGiftResponseSchema,
+  DRAFT_TTL_DAYS,
+  EDIT_GRACE_HOURS,
+  freeGiftExpiry,
   type GiftEditorView,
   GiftEditorViewSchema,
+  GiftLockedDetailsSchema,
+  MAX_CARDS_HARD_LIMIT,
+  PLAN_CAPABILITIES,
+  PremiumRequiredDetailsSchema,
   PublicGiftSchema,
+  SlugAvailabilitySchema,
+  SLUG_SUGGESTION_COUNT,
 } from '@remember-me/shared-types';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { GRANT_TTL_SECONDS } from '../src/shared/auth/gift-grant.service.js';
 import { GiftDeletedEvent, PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
@@ -65,7 +75,7 @@ describe('gifts', () => {
           client.update({ recipientName: 'x' }),
           client.addCard(photoCard()),
           client.publish(),
-          client.changeSlug('some-slug'),
+          client.changeSlug('some-slug-x9k2'),
           client.reorder([gift.id]),
           client.updateCard(gift.id, photoCard()),
           client.removeCard(gift.id),
@@ -88,41 +98,178 @@ describe('gifts', () => {
     });
   });
 
-  describe('plan limits', () => {
-    it('lets a free gift have three photo cards and asks for premium on the fourth', async () => {
+  const audioCard = (giftId: string) => ({
+    type: 'AUDIO_NOTE',
+    payload: { audioUrl: mediaUrl(giftId, 'voice.m4a') },
+  });
+  const triviaCard = {
+    type: 'TRIVIA',
+    payload: { question: 'Where?', options: ['A', 'B'], correctIndex: 0 },
+  };
+  const FREE_CARDS = PLAN_CAPABILITIES.FREE.maxCards ?? 0;
+
+  /** Moves the publication of a gift into the past, as if that much time had gone by. */
+  const publishedHoursAgo = (giftId: string, hours: number) =>
+    app.get(PrismaService).gift.update({
+      where: { id: giftId },
+      data: { publishedAt: new Date(Date.now() - hours * 3_600_000) },
+    });
+
+  describe('a draft is not limited by the plan', () => {
+    it('takes any number of cards, voice notes, trivia and every reveal', async () => {
       const { gift, editToken } = await createGift(app);
       const client = editor(app, gift.id, editToken);
-      for (const text of ['one', 'two', 'three']) await client.addCard(photoCard(text)).expect(201);
+      for (let i = 0; i <= FREE_CARDS; i += 1)
+        await client.addCard(photoCard(`card ${i}`)).expect(201);
+      await client.addCard(audioCard(gift.id)).expect(201);
+      await client.addCard(triviaCard).expect(201);
+      for (const template of ['SCRATCH_CARD', 'TICKET', 'GIFT_BOX']) {
+        await client.update({ reveal: { template } }).expect(200);
+      }
 
-      const response = await client.addCard(photoCard('four')).expect(402);
+      const view = GiftEditorViewSchema.parse((await client.get().expect(200)).body);
+      expect(view).toMatchObject({ plan: 'FREE', status: 'DRAFT' });
+      expect(view.cards).toHaveLength(FREE_CARDS + 3);
+      expect(view.proFeatures).toEqual(['EXTRA_CARDS', 'VOICE_NOTE', 'TRIVIA', 'PREMIUM_REVEAL']);
+    });
+
+    it('reports no paid feature for a gift the free plan allows', async () => {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      for (let i = 0; i < FREE_CARDS; i += 1)
+        await client.addCard(photoCard(`card ${i}`)).expect(201);
+      expect(((await client.get()).body as GiftEditorView).proFeatures).toEqual([]);
+    });
+
+    it('still stops at the technical ceiling of cards', async () => {
+      const { gift, editToken } = await createGift(app);
+      await app.get(PrismaService).giftCard.createMany({
+        data: Array.from({ length: MAX_CARDS_HARD_LIMIT }, (_, position) => ({
+          giftId: gift.id,
+          position,
+          type: 'PHOTO_TEXT' as const,
+          payload: { text: 'x', imageUrl: null },
+        })),
+      });
+      const response = await editor(app, gift.id, editToken).addCard(photoCard()).expect(409);
+      expect(response.body.code).toBe('CONFLICT');
+    });
+  });
+
+  describe('the paywall is at publication', () => {
+    async function readyDraft() {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      await client.addCard(photoCard()).expect(201);
+      await client.update({ recipientName: 'Ana', reveal: { headline: 'Surprise' } }).expect(200);
+      return { gift, client };
+    }
+
+    it('publishes for free a gift that uses no paid feature', async () => {
+      const { client } = await readyDraft();
+      const view = (await client.publish().expect(200)).body as GiftEditorView;
+      expect(view).toMatchObject({ status: 'PUBLISHED', plan: 'FREE', proFeatures: [] });
+      expect((await http().get(`/public/gifts/${view.slug}`).expect(200)).body.watermark).toBe(
+        true,
+      );
+    });
+
+    it.each([
+      ['one card over the free limit', 'EXTRA_CARDS'],
+      ['a voice note', 'VOICE_NOTE'],
+      ['a trivia', 'TRIVIA'],
+      ['a premium reveal', 'PREMIUM_REVEAL'],
+    ] as const)('asks for payment when the gift has %s', async (_what, feature) => {
+      const { gift, client } = await readyDraft();
+      if (feature === 'EXTRA_CARDS') {
+        for (let i = 1; i <= FREE_CARDS; i += 1)
+          await client.addCard(photoCard(`card ${i}`)).expect(201);
+      }
+      if (feature === 'VOICE_NOTE') await client.addCard(audioCard(gift.id)).expect(201);
+      if (feature === 'TRIVIA') await client.addCard(triviaCard).expect(201);
+      if (feature === 'PREMIUM_REVEAL') {
+        await client.update({ reveal: { template: 'TICKET' } }).expect(200);
+      }
+
+      const response = await client.publish().expect(402);
+      expect(ApiErrorSchema.parse(response.body)).toMatchObject({
+        code: 'PREMIUM_REQUIRED',
+        details: { capability: 'PRO_FEATURES', proFeatures: [feature] },
+      });
+      PremiumRequiredDetailsSchema.parse(response.body.details);
+      // Nothing was published and nothing was taken away.
+      expect((await client.get()).body).toMatchObject({ status: 'DRAFT', plan: 'FREE' });
+      await http().get(`/public/gifts/${gift.slug}`).expect(404);
+    });
+
+    it('says what is missing before it asks for payment', async () => {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      await client.addCard(triviaCard).expect(201);
+      const response = await client.publish().expect(422);
+      expect(response.body.details).toEqual({ missing: ['REVEAL_HEADLINE'] });
+    });
+
+    it('publishes the gift, without watermark, once it is paid for', async () => {
+      const { gift, client } = await readyDraft();
+      await client.addCard(triviaCard).expect(201);
+      await client.publish().expect(402);
+
+      await app.get(EventBus).publish(PaymentSucceededEvent, {
+        orderId: `order-${randomUUID()}`,
+        giftId: gift.id,
+        customSlug: null,
+      });
+      const view = (await client.get().expect(200)).body as GiftEditorView;
+      expect(view).toMatchObject({ status: 'PUBLISHED', plan: 'PREMIUM', expiresAt: null });
+      expect((await http().get(`/public/gifts/${view.slug}`).expect(200)).body.watermark).toBe(
+        false,
+      );
+      // Publishing again is the harmless double tap it always was.
+      expect((await client.publish().expect(200)).body.slug).toBe(view.slug);
+    });
+
+    it('lets a paid draft with paid features be published directly', async () => {
+      const { gift, client } = await readyDraft();
+      await makePremium(app, gift.id);
+      await client.addCard(triviaCard).expect(201);
+      expect((await client.publish().expect(200)).body).toMatchObject({
+        status: 'PUBLISHED',
+        plan: 'PREMIUM',
+        expiresAt: null,
+      });
+    });
+  });
+
+  describe('plan limits of a published gift', () => {
+    it('keeps a free gift at the free number of cards', async () => {
+      const { client } = await publishedGift();
+      for (let i = 1; i < FREE_CARDS; i += 1)
+        await client.addCard(photoCard(`card ${i}`)).expect(201);
+
+      const response = await client.addCard(photoCard('one too many')).expect(402);
       expect(ApiErrorSchema.parse(response.body)).toMatchObject({
         code: 'PREMIUM_REQUIRED',
         details: { capability: 'MAX_CARDS' },
       });
-      expect(((await client.get()).body as GiftEditorView).cards).toHaveLength(3);
+      expect(((await client.get()).body as GiftEditorView).cards).toHaveLength(FREE_CARDS);
     });
 
     it('does not let concurrent requests slip past the card limit', async () => {
-      const { gift, editToken } = await createGift(app);
-      const client = editor(app, gift.id, editToken);
+      const { client } = await publishedGift();
       const statuses = (
         await Promise.all(
           Array.from({ length: 6 }, (_, i) => client.addCard(photoCard(`card ${i}`))),
         )
       ).map((response) => response.status);
-      expect(statuses.filter((status) => status === 201)).toHaveLength(3);
-      expect(statuses.filter((status) => status === 402)).toHaveLength(3);
+      // The gift was published with one card.
+      expect(statuses.filter((status) => status === 201)).toHaveLength(FREE_CARDS - 1);
+      expect(statuses.filter((status) => status === 402)).toHaveLength(6 - (FREE_CARDS - 1));
     });
 
     it('blocks voice notes and trivia on a free gift', async () => {
-      const { gift, editToken } = await createGift(app);
-      const client = editor(app, gift.id, editToken);
-      const audio = { type: 'AUDIO_NOTE', payload: { audioUrl: mediaUrl(gift.id, 'voice.m4a') } };
-      const trivia = {
-        type: 'TRIVIA',
-        payload: { question: 'Where?', options: ['A', 'B'], correctIndex: 0 },
-      };
-      for (const card of [audio, trivia]) {
+      const { gift, client } = await publishedGift();
+      for (const card of [audioCard(gift.id), triviaCard]) {
         const response = await client.addCard(card).expect(402);
         expect(response.body).toMatchObject({
           code: 'PREMIUM_REQUIRED',
@@ -132,8 +279,7 @@ describe('gifts', () => {
     });
 
     it('blocks premium reveal templates on a free gift', async () => {
-      const { gift, editToken } = await createGift(app);
-      const client = editor(app, gift.id, editToken);
+      const { client } = await publishedGift();
       for (const template of ['SCRATCH_CARD', 'TICKET', 'GIFT_BOX']) {
         const response = await client.update({ reveal: { template } }).expect(402);
         expect(response.body).toMatchObject({
@@ -250,7 +396,7 @@ describe('gifts', () => {
     it('publishes a free gift with a link named after the recipient', async () => {
       const { gift, client } = await publishedGift('Sarah Öz');
       expect(gift.status).toBe('PUBLISHED');
-      expect(gift.slug).toMatch(/^sarah-oz-[a-z0-9]{6}$/);
+      expect(gift.slug).toMatch(/^sarah-oz-[a-z0-9]{8}$/);
       expect(gift.publicUrl).toBe(`http://localhost:3000/for/${gift.slug}`);
       // Publishing again keeps the link stable.
       expect(((await client.publish().expect(200)).body as GiftEditorView).slug).toBe(gift.slug);
@@ -372,6 +518,23 @@ describe('gifts', () => {
       await client.changeSlug('third-choice').expect(402);
     });
 
+    it('keeps the email of the buyer, and does not lose it when the event comes without one', async () => {
+      const { gift } = await publishedGift();
+      const stored = () =>
+        app.get(PrismaService).gift.findUniqueOrThrow({ where: { id: gift.id } });
+      await app.get(EventBus).publish(PaymentSucceededEvent, {
+        orderId: `order-${randomUUID()}`,
+        giftId: gift.id,
+        customSlug: null,
+        customerEmail: 'buyer@example.com',
+      });
+      expect(await stored()).toMatchObject({ customerEmail: 'buyer@example.com', expiresAt: null });
+
+      // An event stored before the field existed carries no email at all.
+      await pay(gift.id, null);
+      expect((await stored()).customerEmail).toBe('buyer@example.com');
+    });
+
     it('ignores an old order that is delivered again after a newer one', async () => {
       const { gift, client } = await publishedGift();
       const [first, second] = [
@@ -411,14 +574,45 @@ describe('gifts', () => {
   });
 
   describe('slugs', () => {
+    const check = async (slug: string) =>
+      SlugAvailabilitySchema.parse(
+        (await http().get('/gifts/check-slug').query({ slug }).expect(200)).body,
+      );
+
     it('reports availability', async () => {
-      const { gift } = await publishedGift();
-      const check = async (slug: string) =>
-        (await http().get('/gifts/slug-availability').query({ slug }).expect(200)).body;
-      expect(await check('te-quiero-ana')).toEqual({ slug: 'te-quiero-ana', available: true });
-      expect(await check(gift.slug)).toMatchObject({ available: false, reason: 'TAKEN' });
-      expect(await check('create')).toMatchObject({ available: false, reason: 'RESERVED' });
+      const free = `te-quiero-ana-${randomUUID().slice(0, 8)}`;
+      expect(await check(free)).toEqual({ slug: free, available: true, suggestions: [] });
+      expect(await check('create-x9k2')).toMatchObject({ available: false, reason: 'RESERVED' });
       expect(await check('Not Valid')).toMatchObject({ available: false, reason: 'INVALID' });
+    });
+
+    it('refuses a link without an ending of at least four characters', async () => {
+      for (const slug of ['laura', 'te-quiero-ana', 'laura-x9k']) {
+        expect(await check(slug)).toEqual({
+          slug,
+          available: false,
+          reason: 'INVALID',
+          suggestions: [],
+        });
+      }
+    });
+
+    it('suggests free links with the same name when the link is taken', async () => {
+      const { gift } = await publishedGift('Laura');
+      const answer = await check(gift.slug);
+      expect(answer).toMatchObject({ available: false, reason: 'TAKEN' });
+      expect(answer.suggestions).toHaveLength(SLUG_SUGGESTION_COUNT);
+      expect(new Set(answer.suggestions).size).toBe(SLUG_SUGGESTION_COUNT);
+      for (const suggestion of answer.suggestions) {
+        expect(suggestion).toMatch(/^laura-[a-z0-9]{4}$/);
+        expect(suggestion).not.toBe(gift.slug);
+        expect(await check(suggestion)).toMatchObject({ available: true });
+      }
+    });
+
+    it('gives every generated link a random ending, also to a draft', async () => {
+      const { gift } = await createGift(app);
+      expect(gift.slug).toMatch(/^gift-[a-z0-9]{8}$/);
     });
 
     it('only lets a gift change its link when a paid custom link is pending', async () => {
@@ -431,16 +625,228 @@ describe('gifts', () => {
         .get(PrismaService)
         .gift.update({ where: { id: gift.id }, data: { customSlugPending: true } });
       expect((await client.changeSlug(taken.gift.slug).expect(409)).body.code).toBe('SLUG_TAKEN');
-      await client.changeSlug('create').expect(400);
+      await client.changeSlug('create-x9k2').expect(400);
+      // A custom link needs its ending too.
+      await client.changeSlug('my-own').expect(400);
 
-      const changed = (await client.changeSlug('my-own-link-2').expect(200)).body as GiftEditorView;
-      expect(changed).toMatchObject({ slug: 'my-own-link-2', customSlugPending: false });
-      await http().get('/public/gifts/my-own-link-2').expect(200);
-      await client.changeSlug('another-one').expect(402);
+      const chosen = `my-own-link-${randomUUID().slice(0, 8)}`;
+      const changed = (await client.changeSlug(chosen).expect(200)).body as GiftEditorView;
+      expect(changed).toMatchObject({ slug: chosen, customSlugPending: false });
+      await http().get(`/public/gifts/${chosen}`).expect(200);
+      await client.changeSlug('another-link').expect(402);
       // The link it was published with still works and stays reserved.
-      expect((await http().get(`/public/gifts/${gift.slug}`).expect(200)).body.slug).toBe(
-        'my-own-link-2',
+      expect((await http().get(`/public/gifts/${gift.slug}`).expect(200)).body.slug).toBe(chosen);
+    });
+  });
+
+  describe('a delivered gift cannot be reused', () => {
+    const expectLocked = async (call: PromiseLike<request.Response>, scope: string) => {
+      const response = await call;
+      expect(response.status).toBe(423);
+      expect(ApiErrorSchema.parse(response.body).code).toBe('GIFT_LOCKED');
+      expect(GiftLockedDetailsSchema.parse(response.body.details)).toEqual({ scope });
+    };
+
+    it("fixes the recipient's name as soon as the gift is published", async () => {
+      const { client } = await publishedGift('Sarah');
+      await expectLocked(client.update({ recipientName: 'Laura' }), 'RECIPIENT_NAME');
+      // Nothing else in the same request is saved either.
+      await expectLocked(
+        client.update({ recipientName: 'Laura', senderName: 'Tom' }),
+        'RECIPIENT_NAME',
       );
+      expect((await client.get()).body).toMatchObject({ recipientName: 'Sarah', senderName: '' });
+
+      // Sending the same name again (the editor saves whole forms) is not a change.
+      await client.update({ recipientName: 'Sarah', senderName: 'Tom' }).expect(200);
+    });
+
+    it('lets a draft change the name freely', async () => {
+      const { gift, editToken } = await createGift(app);
+      const client = editor(app, gift.id, editToken);
+      await client.update({ recipientName: 'Sarah' }).expect(200);
+      await client.update({ recipientName: 'Laura' }).expect(200);
+    });
+
+    it('allows corrections during the grace period and says when it ends', async () => {
+      const { gift, client } = await publishedGift();
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS - 1);
+
+      const view = GiftEditorViewSchema.parse((await client.get().expect(200)).body);
+      expect(view.locked).toBe(false);
+      expect(new Date(view.editableUntil!).getTime()).toBe(
+        new Date(view.publishedAt!).getTime() + EDIT_GRACE_HOURS * 3_600_000,
+      );
+      await client.update({ reveal: { headline: 'Porto, not Lisbon' } }).expect(200);
+      await client.updateCard(gift.cards[0]!.id, photoCard('typo fixed')).expect(200);
+      await client.addCard(photoCard('one more')).expect(201);
+    });
+
+    it('refuses every edit once the grace period is over', async () => {
+      const { gift, client } = await publishedGift();
+      const second = (
+        (await client.addCard(photoCard('second')).expect(201)).body as GiftEditorView
+      ).cards[1]!.id;
+      const first = gift.cards[0]!.id;
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS + 1);
+
+      for (const call of [
+        client.update({ senderName: 'Tom' }),
+        client.update({ reveal: { headline: 'Something else' } }),
+        client.addCard(photoCard('late')),
+        client.updateCard(first, photoCard('late edit')),
+        client.removeCard(second),
+        client.reorder([second, first]),
+      ]) {
+        await expectLocked(call, 'GIFT');
+      }
+
+      const view = (await client.get().expect(200)).body as GiftEditorView;
+      expect(view).toMatchObject({ locked: true, senderName: '' });
+      expect(view.cards.map((card) => card.id)).toEqual([first, second]);
+      // The recipient is not affected.
+      await http().get(`/public/gifts/${gift.slug}`).expect(200);
+    });
+
+    it('lets an editor opened before the end go on saving after it', async () => {
+      const { gift, editToken } = await publishedGift();
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS - 1);
+      // The browser keeps the grant of the last answer and sends it with the next request.
+      let grant = '';
+      const open = editor(app, gift.id, editToken, () => grant);
+      const keep = (response: { body: GiftEditorView }) => {
+        grant = response.body.grant;
+        return response.body;
+      };
+      keep(await editor(app, gift.id, editToken).get().expect(200));
+
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS + 1);
+      expect(keep(await open.update({ senderName: 'Tom' }).expect(200)).locked).toBe(false);
+      const cards = keep(await open.addCard(photoCard('late, but mine')).expect(201)).cards;
+      const [first, second] = [cards[0]!.id, cards[1]!.id];
+      keep(await open.updateCard(first, photoCard('typo fixed late')).expect(200));
+      keep(await open.reorder([second, first]).expect(200));
+      keep(await open.removeCard(first).expect(200));
+      // Reloading the page keeps the session too.
+      expect(keep(await open.get().expect(200))).toMatchObject({
+        locked: false,
+        senderName: 'Tom',
+      });
+      keep(await open.update({ reveal: { headline: 'Porto' } }).expect(200));
+
+      // Opening the edit link now starts no session: the gift is locked for that visit.
+      const late = editor(app, gift.id, editToken);
+      const view = (await late.get().expect(200)).body as GiftEditorView;
+      expect(view.locked).toBe(true);
+      await expectLocked(late.update({ senderName: 'Someone else' }), 'GIFT');
+      // And the grant of a locked visit does not open one either.
+      await expectLocked(
+        editor(app, gift.id, editToken, () => view.grant).update({ senderName: 'Someone else' }),
+        'GIFT',
+      );
+    });
+
+    it('ends an editing session whose grant has run out, or that belongs to another gift', async () => {
+      const { gift, editToken } = await publishedGift();
+      const other = await publishedGift();
+      const grant = ((await editor(app, gift.id, editToken).get()).body as GiftEditorView).grant;
+      const otherGrant = ((await other.client.get()).body as GiftEditorView).grant;
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS + 1);
+
+      await expectLocked(
+        editor(app, gift.id, editToken, () => otherGrant).update({ senderName: 'Tom' }),
+        'GIFT',
+      );
+      await expectLocked(
+        editor(app, gift.id, editToken, () => 'not-a-grant').update({ senderName: 'Tom' }),
+        'GIFT',
+      );
+      // Half an hour without a request: the grant, and with it the session, is over.
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + (GRANT_TTL_SECONDS + 1) * 1000 });
+      try {
+        await expectLocked(
+          editor(app, gift.id, editToken, () => grant).update({ senderName: 'Tom' }),
+          'GIFT',
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ends every editing session when the gift is locked by hand', async () => {
+      const { gift, editToken } = await publishedGift();
+      const grant = ((await editor(app, gift.id, editToken).get()).body as GiftEditorView).grant;
+      await app
+        .get(PrismaService)
+        .gift.update({ where: { id: gift.id }, data: { lockedAt: new Date(Date.now() - 1000) } });
+      const open = editor(app, gift.id, editToken, () => grant);
+      await expectLocked(open.update({ senderName: 'Tom' }), 'GIFT');
+      expect((await open.get()).body.locked).toBe(true);
+    });
+
+    it('locks at once when the gift is locked by hand', async () => {
+      const { gift, client } = await publishedGift();
+      await app
+        .get(PrismaService)
+        .gift.update({ where: { id: gift.id }, data: { lockedAt: new Date(Date.now() - 1000) } });
+      await expectLocked(client.update({ senderName: 'Tom' }), 'GIFT');
+      expect((await client.get()).body.locked).toBe(true);
+    });
+
+    it('can still be paid for and deleted when locked', async () => {
+      const { gift, client } = await publishedGift();
+      await publishedHoursAgo(gift.id, EDIT_GRACE_HOURS + 1);
+      await app.get(EventBus).publish(PaymentSucceededEvent, {
+        orderId: `order-${randomUUID()}`,
+        giftId: gift.id,
+        customSlug: null,
+      });
+      expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', locked: true });
+      await client.remove().expect(204);
+      await client.get().expect(404);
+    });
+  });
+
+  describe('expiry', () => {
+    const DAY_MS = 24 * 3_600_000;
+    const near = (iso: string | null, expected: number) => {
+      expect(iso).not.toBeNull();
+      expect(Math.abs(new Date(iso!).getTime() - expected)).toBeLessThan(60_000);
+    };
+
+    it('gives a draft a week', async () => {
+      const { gift } = await createGift(app);
+      near(gift.expiresAt, Date.now() + DRAFT_TTL_DAYS * DAY_MS);
+    });
+
+    it('gives a free gift three months from its publication', async () => {
+      const { gift } = await publishedGift();
+      expect(gift.expiresAt).toBe(freeGiftExpiry(new Date(gift.publishedAt!)).toISOString());
+      const days = (Date.parse(gift.expiresAt!) - Date.parse(gift.publishedAt!)) / 86_400_000;
+      expect(days).toBeGreaterThanOrEqual(89);
+      expect(days).toBeLessThanOrEqual(92);
+    });
+
+    it('never expires a paid gift, draft or published', async () => {
+      const draft = await createGift(app);
+      const published = await publishedGift();
+      for (const giftId of [draft.gift.id, published.gift.id]) {
+        await app.get(EventBus).publish(PaymentSucceededEvent, {
+          orderId: `order-${randomUUID()}`,
+          giftId,
+          customSlug: null,
+        });
+      }
+      expect((await editor(app, draft.gift.id, draft.editToken).get()).body.expiresAt).toBeNull();
+      expect((await published.client.get()).body.expiresAt).toBeNull();
+    });
+
+    it('stops serving an expired gift even before it is cleaned up', async () => {
+      const { gift } = await publishedGift();
+      await app
+        .get(PrismaService)
+        .gift.update({ where: { id: gift.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+      await http().get(`/public/gifts/${gift.slug}`).expect(404);
     });
   });
 

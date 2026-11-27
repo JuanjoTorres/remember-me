@@ -13,13 +13,23 @@ export function createGift(locale: Locale): Promise<CreateGiftResponse> {
   return apiJson('/gifts', { method: 'POST', body: { locale } });
 }
 
-/** Every editor call of one gift, bound to its edit token. Each returns the updated gift. */
-export function giftApi(giftId: string, editToken: string) {
+/**
+ * Every editor call of one gift, bound to its edit token. Each returns the updated gift.
+ * `lastGrant` gives the grant of the last answer, which every call sends back: the server lets an
+ * editor that was opened in time go on saving after the correction window has ended.
+ */
+export function giftApi(giftId: string, editToken: string, lastGrant?: () => string | undefined) {
   const call = <T = GiftEditorView>(
     path: string,
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     body?: unknown,
-  ) => apiJson<T>(`/gifts/${giftId}${path}`, { method, body, editToken });
+  ) =>
+    apiJson<T>(`/gifts/${giftId}${path}`, {
+      method,
+      body,
+      editToken,
+      editSession: lastGrant?.(),
+    });
   return {
     get: () => call('', 'GET'),
     update: (changes: UpdateGiftRequest) => call('', 'PATCH', changes),

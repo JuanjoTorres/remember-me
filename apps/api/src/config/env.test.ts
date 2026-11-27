@@ -35,6 +35,39 @@ describe('loadEnv', () => {
     );
   });
 
+  it('runs the daily jobs unless they are switched off', () => {
+    expect(loadEnv(valid).SCHEDULED_JOBS).toBe(true);
+    expect(loadEnv({ ...valid, SCHEDULED_JOBS: 'off' }).SCHEDULED_JOBS).toBe(false);
+    expect(() => loadEnv({ ...valid, SCHEDULED_JOBS: 'maybe' })).toThrowError(/SCHEDULED_JOBS/);
+  });
+
+  it('sends no mail by default, and needs a key and a sender to send through Resend', () => {
+    expect(loadEnv(valid).MAIL_DRIVER).toBe('log');
+    // What a compose file passes for a variable the host did not set.
+    expect(loadEnv({ ...valid, RESEND_API_KEY: '', MAIL_FROM: '' })).toMatchObject({
+      MAIL_DRIVER: 'log',
+      RESEND_API_KEY: undefined,
+      MAIL_FROM: undefined,
+    });
+    expect(() => loadEnv({ ...valid, MAIL_DRIVER: 'resend' })).toThrowError(
+      /RESEND_API_KEY[\s\S]*MAIL_FROM/,
+    );
+    expect(() =>
+      loadEnv({ ...valid, MAIL_DRIVER: 'resend', RESEND_API_KEY: 're_123' }),
+    ).toThrowError(/MAIL_FROM/);
+    expect(() =>
+      loadEnv({ ...valid, MAIL_DRIVER: 'resend', RESEND_API_KEY: 'nope', MAIL_FROM: 'a@b.co' }),
+    ).toThrowError(/RESEND_API_KEY/);
+    expect(
+      loadEnv({
+        ...valid,
+        MAIL_DRIVER: 'resend',
+        RESEND_API_KEY: 're_123',
+        MAIL_FROM: 'kardoo.me <hello@kardoo.me>',
+      }).MAIL_FROM,
+    ).toBe('kardoo.me <hello@kardoo.me>');
+  });
+
   it('requires REDIS_URL for the redis event bus', () => {
     expect(() => loadEnv({ ...valid, EVENT_BUS_DRIVER: 'redis' })).toThrowError(/REDIS_URL/);
     expect(

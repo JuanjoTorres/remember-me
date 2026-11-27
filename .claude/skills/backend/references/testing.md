@@ -17,7 +17,7 @@ behaviour changed on purpose; in the second case change the test to assert the n
   an S3-compatible container (Adobe S3Mock, image and tag in that file) with the bucket `TEST_BUCKET`, applies the committed
   migrations with `prisma migrate deploy`, and provides the connection values to the test files.
 - `apps/api/test/setup.ts` runs before each file and sets the whole environment (`NODE_ENV=test`, memory
-  event bus, test Stripe values, very high rate limits). A new required env var must be added there.
+  event bus, test Stripe values, very high rate limits and link-guess budgets). A new required env var must be added there.
 - The database is not reset between tests or files. Every test creates its own gift and asserts only on
   its own data. Never assert on global counts.
 - Stripe is never contacted: see "How tests fake Stripe" in
@@ -25,28 +25,39 @@ behaviour changed on purpose; in the second case change the test to assert the n
 
 ## Test files
 
-| File                                                  | Covers                                                                                                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api/test/architecture.test.ts`                  | Module list, no cross-module imports, shared and config independent, Stripe only in payments                                                 |
-| `apps/api/test/gifts.test.ts`                         | Creation and edit access, plan limits (also concurrent), cards, publishing, public view, payment events applied to gifts, slugs, deletion    |
-| `apps/api/test/media-qr.test.ts`                      | Image and audio uploads against real storage, content sniffing, storage ceiling, cleanup on deletion, QR per plan (decodes the PNG)          |
-| `apps/api/test/payments.test.ts`                      | Prices cache, checkout session creation and reuse, webhook signature and idempotency, delayed methods, refunds due, confirm, no foreign keys |
-| `apps/api/test/event-bus.test.ts`                     | One contract suite run against both drivers, plus driver-specific delivery. Starts its own Redis container (`redis:8-alpine`)                |
-| `apps/api/test/rate-limit.test.ts`                    | Both throttlers with low limits, exemptions, hardening headers                                                                               |
-| `apps/api/test/health.test.ts`                        | Health endpoint                                                                                                                              |
-| `apps/api/src/config/env.test.ts`                     | Env schema: defaults, each rule, each environment restriction                                                                                |
-| `apps/api/src/shared/auth/gift-grant.service.test.ts` | Grant round trip, expiry, tampering                                                                                                          |
-| `packages/shared-types/src/gifts.test.ts`             | Card payload contracts, slug rules                                                                                                           |
-| `packages/shared-types/src/plans.test.ts`             | Plan checks                                                                                                                                  |
+| File                                                  | Covers                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/test/architecture.test.ts`                  | Module list, no cross-module imports, shared and config independent, Stripe only in payments                                                                                                                                                                               |
+| `apps/api/test/gifts.test.ts`                         | Creation and edit access, drafts without plan limits, the paywall at publication, plan limits of published gifts (also concurrent), cards, publishing, public view, payment events applied to gifts, slugs and suggestions, locking after delivery, expiry dates, deletion |
+| `apps/api/test/gift-lifecycle-cron.test.ts`           | The schedule class: runs the clean-up, does nothing with `SCHEDULED_JOBS=off`, survives a failing job, schedules no anniversary email                                                                                                                                      |
+| `apps/api/test/gift-lifecycle.test.ts`                | Deletion of expired gifts with their files (also a failing storage), the anniversary email (once, concurrent runs, failure, escaping, no delivery configured)                                                                                                              |
+| `apps/api/test/media-qr.test.ts`                      | Image and audio uploads against real storage, content sniffing, storage ceiling, cleanup on deletion, QR per plan (decodes the PNG)                                                                                                                                        |
+| `apps/api/test/payments.test.ts`                      | Prices cache, checkout session creation and reuse, webhook signature and idempotency, delayed methods, refunds due, confirm, no foreign keys                                                                                                                               |
+| `apps/api/test/event-bus.test.ts`                     | One contract suite run against both drivers, plus driver-specific delivery. Starts its own Redis container (`redis:8-alpine`)                                                                                                                                              |
+| `apps/api/test/link-privacy.test.ts`                  | Long endings of generated links, no reuse of another gift's old link (the generator is mocked to force the collision), the miss budget of the public lookup and the budget of the availability check, per visitor                                                          |
+| `apps/api/test/rate-limit.test.ts`                    | Both throttlers with low limits, exemptions, hardening headers                                                                                                                                                                                                             |
+| `apps/api/test/health.test.ts`                        | Health endpoint                                                                                                                                                                                                                                                            |
+| `apps/api/src/config/env.test.ts`                     | Env schema: defaults, each rule, each environment restriction                                                                                                                                                                                                              |
+| `apps/api/src/shared/http/attempt-limiter.test.ts`    | `AttemptLimiter`: blocking, window end, memory ceiling                                                                                                                                                                                                                     |
+| `apps/api/src/shared/auth/gift-grant.service.test.ts` | Grant round trip, expiry, tampering                                                                                                                                                                                                                                        |
+| `packages/shared-types/src/gifts.test.ts`             | Card payload contracts, slug rules and endings, lifecycle dates                                                                                                                                                                                                            |
+| `packages/shared-types/src/plans.test.ts`             | Plan checks                                                                                                                                                                                                                                                                |
 
 Unit tests sit next to the source (`*.test.ts` under `src`); they are excluded from the build by
 `apps/api/tsconfig.build.json`. Everything with HTTP or the database goes under `apps/api/test`.
+
+## Time in tests
+
+Nothing waits for real time. A test moves a gift into the past by writing `publishedAt` or `expiresAt`
+through `PrismaService`, and the lifecycle jobs take `now` as an argument. The lifecycle tests delete
+every expired gift in the shared database; that is safe only because files run one after another.
 
 ## Helpers
 
 - `apps/api/test/create-test-app.ts`: `createTestApp(customize?)` boots the real `AppModule` with
   `rawBody` and `configureApp`, exactly like production. `customize` receives the testing module builder
-  for `overrideProvider` (used only to swap `STRIPE_CLIENT`).
+  for `overrideProvider` (used to swap `STRIPE_CLIENT`, and `Mailer` for a recording fake in
+  `apps/api/test/gift-lifecycle.test.ts`).
 - `apps/api/test/helpers.ts`:
   - `createGift(app)`: `POST /gifts`, returns the gift view and the edit token.
   - `editor(app, giftId, editToken)`: a client with one method per editor endpoint.

@@ -60,6 +60,8 @@ export const PremiumCapabilitySchema = z.enum([
   'AUDIO_UPLOAD',
   'QR_FORMAT',
   'CUSTOM_SLUG',
+  /** Publishing a gift whose content uses paid features. */
+  'PRO_FEATURES',
 ]);
 export type PremiumCapability = z.infer<typeof PremiumCapabilitySchema>;
 
@@ -86,4 +88,29 @@ export function checkQrFormat(plan: Plan, format: QrFormat): PlanCheck {
   return PLAN_CAPABILITIES[plan].qrFormats.includes(format)
     ? ALLOWED
     : { allowed: false, capability: 'QR_FORMAT' };
+}
+
+/** A paid feature that the content of a gift uses. A draft may use them all; publishing needs the plan. */
+export const ProFeatureSchema = z.enum(['EXTRA_CARDS', 'VOICE_NOTE', 'TRIVIA', 'PREMIUM_REVEAL']);
+export type ProFeature = z.infer<typeof ProFeatureSchema>;
+
+const PRO_FEATURE_OF_CARD: Partial<Record<CardType, ProFeature>> = {
+  AUDIO_NOTE: 'VOICE_NOTE',
+  TRIVIA: 'TRIVIA',
+};
+
+/** The paid features a gift relies on: what the free plan would not allow in it. */
+export function proFeaturesOf(gift: {
+  cards: readonly { type: CardType }[];
+  reveal: { template: RevealTemplate };
+}): ProFeature[] {
+  const free = PLAN_CAPABILITIES.FREE;
+  const used = new Set<ProFeature>();
+  if (free.maxCards !== null && gift.cards.length > free.maxCards) used.add('EXTRA_CARDS');
+  for (const card of gift.cards) {
+    const feature = PRO_FEATURE_OF_CARD[card.type];
+    if (feature && !free.cardTypes.includes(card.type)) used.add(feature);
+  }
+  if (!free.revealTemplates.includes(gift.reveal.template)) used.add('PREMIUM_REVEAL');
+  return ProFeatureSchema.options.filter((feature) => used.has(feature));
 }

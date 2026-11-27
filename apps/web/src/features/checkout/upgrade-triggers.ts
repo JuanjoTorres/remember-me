@@ -2,6 +2,7 @@ import {
   type CardType,
   checkAddCard,
   checkRevealTemplate,
+  type GiftStatus,
   type Plan,
   type PremiumCapability,
   type RevealTemplate,
@@ -20,18 +21,24 @@ export type UpgradeReason = PremiumCapability | 'WATERMARK';
 /**
  * Decides, before calling the API, whether an action needs an upgrade. Uses the same plan rules as
  * the backend, which enforces them again.
+ *
+ * A draft is never stopped while it is being built: every card type, any number of cards and every
+ * reveal can be tried for free. What the gift ends up using is paid for once, when it is published.
  */
 export function upgradeReasonFor(
-  gift: { plan: Plan; cards: readonly unknown[] },
+  gift: { plan: Plan; status: GiftStatus; cards: readonly unknown[] },
   intent: CreatorIntent,
 ): UpgradeReason | null {
   if (gift.plan === 'PREMIUM') return null;
+  const building = gift.status === 'DRAFT';
   switch (intent.kind) {
     case 'ADD_CARD': {
+      if (building) return null;
       const check = checkAddCard(gift.plan, gift.cards.length, intent.cardType);
       return check.allowed ? null : check.capability;
     }
     case 'PICK_REVEAL': {
+      if (building) return null;
       const check = checkRevealTemplate(gift.plan, intent.template);
       return check.allowed ? null : check.capability;
     }

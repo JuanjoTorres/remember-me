@@ -31,7 +31,6 @@ Checked on 2026-11-22.
 | eslint                    | 10.15.0                            | MIT        |                                                                                                                                  |
 | prettier                  | 3.10.1                             | MIT        |                                                                                                                                  |
 | ioredis                   | 6.0.0                              | MIT        | Only for `EVENT_BUS_DRIVER=redis`                                                                                                |
-| nanoid                    | 6.0.2                              | MIT        | Slug and edit-token generation                                                                                                   |
 
 Local runtime: Node v24.14.0, Docker 29.5.3. No package above needs a commercial license.
 

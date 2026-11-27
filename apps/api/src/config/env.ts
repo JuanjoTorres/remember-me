@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+/** Compose files pass an unset optional variable as an empty string: read it as not set. */
+const emptyAsUnset = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema);
+
 const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
@@ -35,10 +39,30 @@ const EnvSchema = z
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(240),
     /** Gifts one client (IP) may start per hour. */
     GIFT_CREATION_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(30),
+    /**
+     * Links that lead to no gift which one client (IP) may open in ten minutes before every lookup
+     * is refused for the rest of that time. Keeps links from being found by trying addresses.
+     */
+    LINK_LOOKUP_MISS_LIMIT: z.coerce.number().int().positive().default(30),
+    /** Link availability checks one client (IP) may make in ten minutes. */
+    SLUG_CHECK_LIMIT: z.coerce.number().int().positive().default(60),
     /** Reverse proxies in front of the API, so that the client IP is read from X-Forwarded-For. */
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
+    /** Whether this instance runs the daily job that deletes expired gifts. */
+    SCHEDULED_JOBS: z
+      .enum(['on', 'off'])
+      .default('on')
+      .transform((value) => value === 'on'),
+    /**
+     * `log` sends nothing; `resend` sends through Resend. Nothing sends email while the
+     * anniversary email is switched off.
+     */
+    MAIL_DRIVER: z.enum(['log', 'resend']).default('log'),
+    RESEND_API_KEY: emptyAsUnset(z.string().startsWith('re_').optional()),
+    /** Sender of every email, e.g. `kardoo.me <hello@kardoo.me>`. Its domain must be verified. */
+    MAIL_FROM: emptyAsUnset(z.string().trim().min(3).max(200).optional()),
   })
   .superRefine((env, ctx) => {
     const deployed = env.NODE_ENV === 'staging' || env.NODE_ENV === 'production';
@@ -69,6 +93,15 @@ const EnvSchema = z
         path: ['REDIS_URL'],
         message: 'REDIS_URL is required when EVENT_BUS_DRIVER=redis',
       });
+    }
+    for (const name of ['RESEND_API_KEY', 'MAIL_FROM'] as const) {
+      if (env.MAIL_DRIVER === 'resend' && !env[name]) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [name],
+          message: `${name} is required when MAIL_DRIVER=resend`,
+        });
+      }
     }
   });
 

@@ -32,7 +32,9 @@ Implemented in `apps/api/src/shared/auth/gift-grant.service.ts`; guard and decor
 
 - What it is: a signed snapshot of one gift, so that other modules do not have to call `gifts`. Format:
   base64url JSON body, a dot, an HMAC-SHA256 signature with `GRANT_SIGNING_SECRET`.
-- Claims (`GrantClaimsSchema`): `giftId`, `slug`, `plan`, `published`, `exp`.
+- Claims (`GrantClaimsSchema`): `giftId`, `slug`, `plan`, `published`, `editing`, `exp`. `editing` says
+  that the holder may change the gift; `gifts` reads it back from `x-edit-session` to let an editing
+  session outlive the correction window (see `.claude/skills/backend/references/gifts.md`).
 - Lifetime: `GRANT_TTL_SECONDS`. `verify` rejects a bad shape, a wrong signature (constant-time compare),
   claims that do not parse, and an expired grant, all as `UNAUTHORIZED`.
 - Issued only by `gifts`: `GiftsService.view` puts a fresh one in every `GiftEditorView` (`grant`,
@@ -71,6 +73,10 @@ Configured in `apps/api/src/app.module.ts` with `@nestjs/throttler`; `ThrottlerG
 - Storage is in memory per instance.
 - Separate from these: `PaymentsService.confirm` limits its own calls to Stripe
   (`.claude/skills/backend/references/payments.md`).
+
+Besides the throttlers, `LinkGuessGuard` limits how many links one client may try (wrong links opened,
+availability checks made): see "Guessing links" in `.claude/skills/backend/references/gifts.md`. It also
+keys on the request IP, so it depends on the same proxy trust.
 
 ## Proxy trust
 

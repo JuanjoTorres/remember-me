@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { checkAddCard, checkQrFormat, checkRevealTemplate, PLAN_CAPABILITIES } from './plans.js';
+import {
+  checkAddCard,
+  checkQrFormat,
+  checkRevealTemplate,
+  PLAN_CAPABILITIES,
+  proFeaturesOf,
+} from './plans.js';
 
 describe('plan capabilities', () => {
   it('FREE allows up to three photo cards', () => {
@@ -40,5 +46,29 @@ describe('plan capabilities', () => {
     expect(PLAN_CAPABILITIES.PREMIUM.watermark).toBe(false);
     expect(checkQrFormat('FREE', 'svg')).toEqual({ allowed: false, capability: 'QR_FORMAT' });
     expect(checkQrFormat('PREMIUM', 'svg')).toEqual({ allowed: true });
+  });
+
+  it('finds no paid feature in a gift the free plan allows', () => {
+    const photos = Array.from({ length: PLAN_CAPABILITIES.FREE.maxCards ?? 0 }, () => ({
+      type: 'PHOTO_TEXT' as const,
+    }));
+    expect(proFeaturesOf({ cards: photos, reveal: { template: 'BASIC' } })).toEqual([]);
+  });
+
+  it('lists each paid feature a gift uses, once', () => {
+    const photo = { type: 'PHOTO_TEXT' as const };
+    const overTheLimit = Array.from(
+      { length: (PLAN_CAPABILITIES.FREE.maxCards ?? 0) + 1 },
+      () => photo,
+    );
+    expect(proFeaturesOf({ cards: overTheLimit, reveal: { template: 'BASIC' } })).toEqual([
+      'EXTRA_CARDS',
+    ]);
+    expect(
+      proFeaturesOf({
+        cards: [{ type: 'AUDIO_NOTE' }, { type: 'AUDIO_NOTE' }, { type: 'TRIVIA' }],
+        reveal: { template: 'TICKET' },
+      }),
+    ).toEqual(['VOICE_NOTE', 'TRIVIA', 'PREMIUM_REVEAL']);
   });
 });

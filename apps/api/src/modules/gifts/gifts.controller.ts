@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  createParamDecorator,
   Delete,
+  type ExecutionContext,
   Get,
-  Headers,
   HttpCode,
+  Ip,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -20,6 +22,7 @@ import {
   type CreateGiftRequest,
   CreateGiftRequestSchema,
   type CreateGiftResponse,
+  EDIT_SESSION_HEADER,
   EDIT_TOKEN_HEADER,
   type GiftEditorView,
   type ReorderCardsRequest,
@@ -30,15 +33,29 @@ import {
 } from '@remember-me/shared-types';
 import { z } from 'zod';
 import { ZodPipe } from '../../shared/http/zod.pipe.js';
-import { GiftsService } from './gifts.service.js';
+import { type EditAccess, GiftsService } from './gifts.service.js';
+import { LinkGuessGuard } from './link-guess-guard.js';
 
 const GiftId = () => Param('giftId', new ParseUUIDPipe());
-const EditToken = () => Headers(EDIT_TOKEN_HEADER);
+/** What the request presents: the edit token and, when the editor sends it back, its last grant. */
+const Access = createParamDecorator((_: unknown, context: ExecutionContext): EditAccess => {
+  const { headers } = context.switchToHttp().getRequest<{
+    headers: Record<string, string | string[] | undefined>;
+  }>();
+  const one = (name: string) => {
+    const value = headers[name];
+    return typeof value === 'string' ? value : undefined;
+  };
+  return { editToken: one(EDIT_TOKEN_HEADER), session: one(EDIT_SESSION_HEADER) };
+});
 
 /** Editor endpoints. Everything except creation needs the gift's edit token. */
 @Controller('gifts')
 export class GiftsController {
-  constructor(private readonly gifts: GiftsService) {}
+  constructor(
+    private readonly gifts: GiftsService,
+    private readonly guesses: LinkGuessGuard,
+  ) {}
 
   @Post()
   create(
@@ -47,64 +64,67 @@ export class GiftsController {
     return this.gifts.create(body);
   }
 
-  @Get('slug-availability')
-  slugAvailability(
+  @Get('check-slug')
+  checkSlug(
     @Query('slug', new ZodPipe(z.string().max(200))) slug: string,
+    @Ip() client: string,
   ): Promise<SlugAvailability> {
-    return this.gifts.slugAvailability(slug);
+    // The answer says whether a link exists, so it must not be a way to look for gifts.
+    this.guesses.countCheck(client);
+    return this.gifts.checkSlug(slug);
   }
 
   @Get(':giftId')
-  get(@GiftId() giftId: string, @EditToken() token?: string): Promise<GiftEditorView> {
-    return this.gifts.get(giftId, token);
+  get(@GiftId() giftId: string, @Access() access: EditAccess): Promise<GiftEditorView> {
+    return this.gifts.get(giftId, access);
   }
 
   @Patch(':giftId')
   update(
     @GiftId() giftId: string,
     @Body(new ZodPipe(UpdateGiftRequestSchema)) body: UpdateGiftRequest,
-    @EditToken() token?: string,
+    @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.update(giftId, token, body);
+    return this.gifts.update(giftId, access, body);
   }
 
   @Delete(':giftId')
   @HttpCode(204)
-  remove(@GiftId() giftId: string, @EditToken() token?: string): Promise<void> {
-    return this.gifts.remove(giftId, token);
+  remove(@GiftId() giftId: string, @Access() access: EditAccess): Promise<void> {
+    return this.gifts.remove(giftId, access);
   }
 
   @Post(':giftId/publish')
   @HttpCode(200)
-  publish(@GiftId() giftId: string, @EditToken() token?: string): Promise<GiftEditorView> {
-    return this.gifts.publish(giftId, token);
+  publish(@GiftId() giftId: string, @Access() access: EditAccess): Promise<GiftEditorView> {
+    return this.gifts.publish(giftId, access);
   }
 
   @Put(':giftId/slug')
   changeSlug(
     @GiftId() giftId: string,
     @Body(new ZodPipe(ChangeSlugRequestSchema)) body: ChangeSlugRequest,
-    @EditToken() token?: string,
+    @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.changeSlug(giftId, token, body.slug);
+    return this.gifts.changeSlug(giftId, access, body.slug);
   }
 
   @Post(':giftId/cards')
   addCard(
     @GiftId() giftId: string,
     @Body(new ZodPipe(CardInputSchema)) body: CardInput,
-    @EditToken() token?: string,
+    @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.addCard(giftId, token, body);
+    return this.gifts.addCard(giftId, access, body);
   }
 
   @Put(':giftId/cards/order')
   reorderCards(
     @GiftId() giftId: string,
     @Body(new ZodPipe(ReorderCardsRequestSchema)) body: ReorderCardsRequest,
-    @EditToken() token?: string,
+    @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.reorderCards(giftId, token, body.cardIds);
+    return this.gifts.reorderCards(giftId, access, body.cardIds);
   }
 
   @Patch(':giftId/cards/:cardId')
@@ -112,17 +132,17 @@ export class GiftsController {
     @GiftId() giftId: string,
     @Param('cardId', new ParseUUIDPipe()) cardId: string,
     @Body(new ZodPipe(CardInputSchema)) body: CardInput,
-    @EditToken() token?: string,
+    @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.updateCard(giftId, token, cardId, body);
+    return this.gifts.updateCard(giftId, access, cardId, body);
   }
 
   @Delete(':giftId/cards/:cardId')
   removeCard(
     @GiftId() giftId: string,
     @Param('cardId', new ParseUUIDPipe()) cardId: string,
-    @EditToken() token?: string,
+    @Access() access: EditAccess,
   ): Promise<GiftEditorView> {
-    return this.gifts.removeCard(giftId, token, cardId);
+    return this.gifts.removeCard(giftId, access, cardId);
   }
 }

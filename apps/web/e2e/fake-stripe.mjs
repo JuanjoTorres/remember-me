@@ -30,6 +30,7 @@ const server = createServer((req, res) => {
         payment_status: session?.paid ? 'paid' : 'unpaid',
         amount_total: 499,
         currency: 'eur',
+        customer_details: { email: 'buyer@example.com' },
       });
     }
     // Test hook: the customer "pays" this session, without any webhook being sent.

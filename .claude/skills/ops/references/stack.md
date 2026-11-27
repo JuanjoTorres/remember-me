@@ -16,13 +16,13 @@ The build context is the repository root (the workspace is needed). `.dockerigno
 
 ## Server stack (`deploy/compose.prod.yaml`)
 
-| Service    | Notes                                                                                                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `caddy`    | The only published ports (80, 443). Reads `deploy/Caddyfile`; certificates in a volume.                                                                                        |
-| `postgres` | PostgreSQL 17, data in the `postgres-data` volume, not published.                                                                                                              |
-| `migrate`  | Runs before `api` on every `up`; `api` waits for it to finish successfully.                                                                                                    |
-| `api`      | Gets every setting from the host `.env` through the compose file. `TRUST_PROXY_HOPS: 1` because Caddy is the one proxy in front. `EVENT_BUS_DRIVER: memory` (single instance). |
-| `web`      | Talks to the API inside the network (`INTERNAL_API_URL: http://api:4000`); waits for a healthy API.                                                                            |
+| Service    | Notes                                                                                                                                                                                                                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `caddy`    | The only published ports (80, 443). Reads `deploy/Caddyfile`; certificates in a volume.                                                                                                                                                                                                      |
+| `postgres` | PostgreSQL 17, data in the `postgres-data` volume, not published.                                                                                                                                                                                                                            |
+| `migrate`  | Runs before `api` on every `up`; `api` waits for it to finish successfully.                                                                                                                                                                                                                  |
+| `api`      | Gets every setting from the host `.env` through the compose file. `TRUST_PROXY_HOPS: 1` because Caddy is the one proxy in front. `EVENT_BUS_DRIVER: memory` (single instance). The mail settings (`MAIL_DRIVER`, `RESEND_API_KEY`, `MAIL_FROM`) are optional and default to sending nothing. |
+| `web`      | Talks to the API inside the network (`INTERNAL_API_URL: http://api:4000`); waits for a healthy API.                                                                                                                                                                                          |
 
 `deploy/Caddyfile` has one site per domain (`WEB_DOMAIN`, `API_DOMAIN`) and caps request bodies on
 the API site; the API enforces the real upload limits. `deploy/.env.example` lists every value the
@@ -42,6 +42,9 @@ host `.env` must define.
 - Database name, user and the local bucket are still called `remember_me` / `remember` /
   `remember-me`. Renaming them means migrating data on every host: do not do it in passing.
 - Do not add a published port to `api`, `web` or `postgres` in the server stack.
+- The API runs one daily job inside its own process (03:15 UTC: deleting expired gifts with their
+  files). There is no separate cron container and no host cron for it. The anniversary email is switched
+  off, so no mail provider has to be configured.
 - A second API instance needs `EVENT_BUS_DRIVER=redis`, a Redis service, and rate-limit counters
   moved to a shared store first (see `.claude/skills/backend/references/events.md`).
 

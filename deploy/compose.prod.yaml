@@ -61,6 +61,10 @@ services:
       STRIPE_PRICE_ID_PREMIUM: ${STRIPE_PRICE_ID_PREMIUM}
       STRIPE_PRICE_ID_CUSTOM_SLUG: ${STRIPE_PRICE_ID_CUSTOM_SLUG}
       EVENT_BUS_DRIVER: memory
+      # Email is optional and unused today: the anniversary email is switched off.
+      MAIL_DRIVER: ${MAIL_DRIVER:-log}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       # Caddy is the one proxy in front of the API.
       TRUST_PROXY_HOPS: 1
     depends_on:

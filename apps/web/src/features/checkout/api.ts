@@ -11,8 +11,9 @@ export function getPrices(): Promise<PricesResponse> {
   return apiJson('/payments/prices');
 }
 
-export function getSlugAvailability(slug: string, signal?: AbortSignal): Promise<SlugAvailability> {
-  return apiJson(`/gifts/slug-availability?slug=${encodeURIComponent(slug)}`, { signal });
+/** Whether a custom link is free; for a taken one the answer carries free alternatives. */
+export function checkSlug(slug: string, signal?: AbortSignal): Promise<SlugAvailability> {
+  return apiJson(`/gifts/check-slug?slug=${encodeURIComponent(slug)}`, { signal });
 }
 
 export function createCheckoutSession(

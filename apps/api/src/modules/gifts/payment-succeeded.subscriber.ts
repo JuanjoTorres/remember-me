@@ -12,8 +12,11 @@ export class PaymentSucceededSubscriber implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.events.subscribe(PaymentSucceededEvent, 'gifts', ({ orderId, giftId, customSlug }) =>
-      this.gifts.applyPayment(orderId, giftId, customSlug),
+    this.events.subscribe(
+      PaymentSucceededEvent,
+      'gifts',
+      ({ orderId, giftId, customSlug, customerEmail }) =>
+        this.gifts.applyPayment(orderId, giftId, customSlug, customerEmail ?? null),
     );
   }
 }

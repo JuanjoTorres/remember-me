@@ -27,7 +27,7 @@ it in e2e, and the compose file (see the `ops` skill).
 
 - `apiJson<T>(path, request)`: sends and parses JSON; a 204 resolves to `undefined`.
 - `apiBlob(path, request)`: same, returns a `Blob` (QR codes).
-- `ApiRequest`: `method`, `body` (JSON value or `FormData`), `editToken`, `grant`, `signal`, `cache`.
+- `ApiRequest`: `method`, `body` (JSON value or `FormData`), `editToken`, `editSession`, `grant`, `signal`, `cache`.
 - The base URL is `apiBaseUrl()`. `cache` defaults to `no-store`.
 - Responses are not validated at runtime; the generic type is trusted. Types come from
   `@remember-me/shared-types`.
@@ -37,6 +37,7 @@ Headers it sets:
 | Header                  | When                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------ |
 | `x-edit-token`          | `editToken` given: the gift's secret, for the `gifts` editor endpoints         |
+| `x-edit-session`        | `editSession` given: the grant of the gift's last answer (`giftApi` sends it)  |
 | `Authorization: Bearer` | `grant` given: the short-lived gift grant, for media, QR and payment endpoints |
 | `Content-Type` JSON     | A body that is not `FormData` (the browser sets the multipart boundary itself) |
 
@@ -57,6 +58,7 @@ Codes the UI reacts to today:
 | Code                | Where                                                           | Reaction                                          |
 | ------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
 | `PREMIUM_REQUIRED`  | `useGiftEditor`, `useUpload` in `MediaInputs.tsx`, `SharePanel` | Opens the upgrade sheet with the matching reason  |
+| `GIFT_LOCKED`       | `useGiftEditor`                                                 | Message in the sticky bar; the gift is reloaded   |
 | `UNAUTHORIZED`      | `withGrant`; `GiftEditor` on load                               | Refresh the grant once; drop a refused link token |
 | `NOT_FOUND`         | `GiftEditor` on load                                            | "No access" screen                                |
 | `UNSUPPORTED_MEDIA` | `useUpload`                                                     | Message per media kind                            |
@@ -93,7 +95,7 @@ gift and the edit token, which is returned only that once.
 | Function                | Endpoint                          | Auth  |
 | ----------------------- | --------------------------------- | ----- |
 | `getPrices`             | `GET /payments/prices`            | none  |
-| `getSlugAvailability`   | `GET /gifts/slug-availability`    | none  |
+| `checkSlug`             | `GET /gifts/check-slug`           | none  |
 | `createCheckoutSession` | `POST /payments/checkout-session` | grant |
 | `confirmPayment`        | `POST /payments/confirm`          | grant |
 

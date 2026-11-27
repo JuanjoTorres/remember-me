@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { DRAFT_TTL_DAYS, EDIT_GRACE_HOURS, FREE_GIFT_TTL_MONTHS } from '@remember-me/shared-types';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { BRAND_NAME } from '@/features/shared/brand';
@@ -24,7 +25,14 @@ export default async function PrivacyPage() {
       {SECTIONS.map((section) => (
         <section key={section} className="mt-7">
           <h2 className="font-display text-xl tracking-tight">{t(`${section}Title`)}</h2>
-          <p className="text-ink-soft mt-2 leading-relaxed">{t(`${section}Text`)}</p>
+          <p className="text-ink-soft mt-2 leading-relaxed">
+            {/* How long things are kept comes from the shared rules, never from the text itself. */}
+            {t(`${section}Text`, {
+              draftDays: DRAFT_TTL_DAYS,
+              freeMonths: FREE_GIFT_TTL_MONTHS,
+              graceHours: EDIT_GRACE_HOURS,
+            })}
+          </p>
         </section>
       ))}
       <Link href="/" className="mt-10 inline-block text-sm underline underline-offset-4">

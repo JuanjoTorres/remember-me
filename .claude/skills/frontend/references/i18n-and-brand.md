@@ -41,13 +41,14 @@ Which language a screen uses:
 `apps/web/messages/en.json` and `apps/web/messages/es.json` have the same shape: one top-level object per
 namespace.
 
-| Namespace    | Used by                                              | Notable nested groups                                           |
-| ------------ | ---------------------------------------------------- | --------------------------------------------------------------- |
-| `home`       | `apps/web/src/app/(main)/page.tsx`                   | none                                                            |
-| `creator`    | Everything in `gift-creator`                         | `cardType`, `cardTitle`, `template`, `templateHint` (enum keys) |
-| `checkout`   | Everything in `checkout`                             | `reason` (one key per `UpgradeReason`)                          |
-| `experience` | `labels.ts`, gift page metadata, gift not-found page | none                                                            |
-| `privacy`    | `apps/web/src/app/(main)/privacy/page.tsx`           | `s1`…`s6` title and text pairs                                  |
+| Namespace    | Used by                                                             | Notable nested groups                                           |
+| ------------ | ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `home`       | `apps/web/src/app/(main)/page.tsx`                                  | none                                                            |
+| `creator`    | Everything in `gift-creator`                                        | `cardType`, `cardTitle`, `template`, `templateHint` (enum keys) |
+| `checkout`   | Everything in `checkout`                                            | `reason` (one key per `UpgradeReason`)                          |
+| `experience` | `labels.ts`, gift page metadata, gift not-found page                | none                                                            |
+| `privacy`    | `apps/web/src/app/(main)/privacy/page.tsx`                          | `s1`…`s6` title and text pairs                                  |
+| `preview`    | `apps/web/src/app/(main)/create/[giftId]/preview/PreviewScreen.tsx` | Banner, publish button and the note under it                    |
 
 Nested groups keyed by an enum value (`PHOTO_TEXT`, `SCRATCH_CARD`, `MAX_CARDS`…) are read with a template
 string, so every enum member needs its key.
@@ -92,6 +93,14 @@ missing translation.
    side).
 3. No brand name, price or limit in the text: use a placeholder.
 4. If a test or e2e spec looks the element up by its English text, update that lookup.
+
+## Periods and limits in texts
+
+A text never contains a number of cards, days, hours or years. Messages take them as values (`{max}`,
+`{years}`, `{hours}`, `{draftDays}`…) from `PLAN_CAPABILITIES` and
+`packages/shared-types/src/lifecycle.ts`; the privacy page passes the retention periods to every section.
+`apps/web/src/i18n/experience-messages.ts` exports the recipient texts of every language for the preview
+page; import it only from server components.
 
 ## Add a namespace or a language
 
