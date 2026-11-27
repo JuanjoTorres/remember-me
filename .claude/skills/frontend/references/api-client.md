@@ -64,7 +64,7 @@ Codes the UI reacts to today:
 | `UNSUPPORTED_MEDIA` | `useUpload`                                                     | Message per media kind                            |
 | `PAYLOAD_TOO_LARGE` | `useUpload`                                                     | "File too large" message                          |
 | `CONFLICT`          | `PremiumUpgradeSheet`                                           | "Already premium" message                         |
-| any API error       | `onChangeSlug` in `SuccessScreen`                               | The pending link field shows "taken"              |
+| any API error       | `onChangeSlug` in `SuccessScreen`                               | The pending link panel shows `pendingSlugError`   |
 
 Everything else falls into a generic message of the component that made the call.
 

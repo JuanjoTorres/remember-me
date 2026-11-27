@@ -77,7 +77,7 @@ the web code or in messages.
 - In the sheet, the field starts from the recipient's name. Payment is blocked unless the state is
   `valid`; `customSlug` in the checkout request is the name.
 - The same field is reused by `PendingSlug` in
-  `apps/web/src/features/gift-creator/components/SharePanel.tsx` when a paid link was taken meanwhile; there
+  `apps/web/src/features/gift-creator/components/SharePanel.tsx` when the name paid for could not be used; there
   the button needs `valid` and calls `PUT /gifts/:id/slug` with the name; a failure shows
   `pendingSlugError`.
 
