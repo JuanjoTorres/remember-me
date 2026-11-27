@@ -95,7 +95,8 @@ Committed under `apps/api/prisma/migrations`, in order:
 | `20261127150000_free_gift_three_months` | Data only: `expires_at` of free published gifts becomes three months from publication                                                             |
 
 `20261127150000_free_gift_three_months` changes no table: it sets `expires_at` of free published gifts to
-three months from their publication, the rule since 2026-11-27.
+three months from their publication, the rule since 2026-11-27. A free gift published more than three
+months before it runs expires at once and is deleted, with its files, by the next nightly clean-up.
 
 The lifecycle migration backfills by hand-written SQL: existing unpaid drafts get a week from the day it
 runs, existing free published gifts a year from their publication, paid gifts stay `NULL`.

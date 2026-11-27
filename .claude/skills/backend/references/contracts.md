@@ -86,7 +86,7 @@ exists in Node and in browsers; the package declares it locally because it loads
 
 `packages/shared-types/src/lifecycle.ts` holds `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_MONTHS`,
 `EDIT_GRACE_HOURS`, `ANNIVERSARY_YEARS` and the date helpers `draftExpiry`, `freeGiftExpiry`,
-`editableUntil`, `addYears`. The API computes with them and the web shows them; never repeat a period in
+`editableUntil`, `addYears`, `addMonths`. The API computes with them and the web shows them; never repeat a period in
 code or in a message.
 `slugify` turns free text into slug form and may return a string
 too short to be valid (even empty): validate its result.
