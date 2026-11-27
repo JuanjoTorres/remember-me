@@ -25,7 +25,12 @@ const nextConfig: NextConfig = {
       },
       {
         // A gift link is a secret between two people: never send it to other sites.
-        source: '/for/:slug*',
+        // Both shapes of a gift link: the code alone, and the code with a custom name.
+        source: '/:code([a-z0-9]{4,12})',
+        headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+      },
+      {
+        source: '/:code([a-z0-9]{4,12})/for/:name',
         headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
       },
     ];

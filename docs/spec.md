@@ -10,7 +10,7 @@ optional trivia question, ending in an interactive surprise reveal.
 
 - **Creator:** builds the gift on their phone, without signing up. Pays once per gift if they want the full
   experience. Their email is captured by Stripe Checkout.
-- **Recipient:** scans the QR code and opens `/for/[slug]` on a phone. No account, no app install.
+- **Recipient:** scans the QR code and opens the gift's link on a phone. No account, no app install.
 
 ## v1 flows
 
@@ -30,7 +30,7 @@ optional trivia question, ending in an interactive surprise reveal.
 5. **Payment return** (`/create/[giftId]/success`): polls the gift until the webhook has been processed,
    which also publishes it, then shows the final QR download (SVG/PNG). The creator does not go back
    through the editor.
-6. **Experience the gift** (`/for/[slug]`): full-screen stories, background preload of the next cards' media,
+6. **Experience the gift** (`/[code]`, or `/[code]/for/[name]` for a custom link): full-screen stories, background preload of the next cards' media,
    optional trivia, then the reveal (scratch card, ticket or gift box) with confetti. Never indexed.
 7. **After delivery:** publishing fixes the recipient's name. Typos and photos can be corrected for 48
    hours; after that the edit link opens the gift locked, so that it cannot be reused for someone else
@@ -121,7 +121,7 @@ taken link.
 ## Frontend rules
 
 - `src/features/`: `gift-creator`, `gift-experience`, `gift-reveal`, `checkout`, `shared`.
-- `app/for/[slug]`: isolated full-screen layout (`100dvh`), no imports from `gift-creator`, `checkout` or
+- `app/(gift)`: isolated full-screen layout (`100dvh`), no imports from `gift-creator`, `checkout` or
   Stripe; enforced by a lint rule. Server-rendered fetch through `INTERNAL_API_URL`; the browser uses
   `NEXT_PUBLIC_API_URL`.
 - `usePreloadMedia` preloads the media of the following cards while the current one is shown.
@@ -153,6 +153,6 @@ Questions 2 and 4 were built as assumed below and still need the owner's confirm
    the three premium templates.
 3. Final prices and Stripe products are created by the account owner; 4.99 € and 1.99 € are examples.
 4. The project `CLAUDE.md` says the QR points to `https://remember.me[slug]`; this spec uses
-   `<web origin>/for/[slug]`, consistent with section 1 of the same file.
+   `<web origin>/<link>`, consistent with section 1 of the same file.
 5. The product was first called remember.me. That domain was not available, so the public brand is
    kardoo.me. `CLAUDE.md`, the repository and the package scope (`@remember-me/*`) keep the old name.

@@ -107,9 +107,9 @@ describe('gift lifecycle', () => {
       expect(await prisma().giftCard.count({ where: { giftId: gift.id } })).toBe(0);
       expect(await prisma().mediaAsset.count({ where: { giftId: gift.id } })).toBe(0);
       expect((await fetch(uploaded)).status).toBe(404);
-      expect(
-        (await http().get('/gifts/check-slug').query({ slug: gift.slug }).expect(200)).body,
-      ).toMatchObject({ available: true });
+      // Its link is free again: nothing holds it.
+      expect(await prisma().gift.count({ where: { slug: gift.slug } })).toBe(0);
+      expect(await prisma().giftSlugAlias.count({ where: { slug: gift.slug } })).toBe(0);
     });
 
     it('deletes a free gift three months after it was published, not before', async () => {
@@ -183,7 +183,7 @@ describe('gift lifecycle', () => {
       // The gift is in Spanish (the test helper creates it so), and so is its email.
       expect(mail!.subject).toBe('Hace un año sorprendiste a Laura');
       for (const body of [mail!.html, mail!.text]) {
-        expect(body).toContain(`http://localhost:3000/for/${gift.slug}`);
+        expect(body).toContain(`http://localhost:3000/${gift.slug}`);
         expect(body).toContain('http://localhost:3000/create');
         expect(body).toContain('Crear un regalo nuevo');
       }

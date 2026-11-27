@@ -78,14 +78,14 @@ test('a creator tries everything for free, previews the gift and publishes it fr
   await expect(page.getByRole('heading', { name: 'Your gift is live' })).toBeVisible();
   await expect(page.getByText(/You can still fix typos and swap photos until/)).toBeVisible();
   await expect(page.getByText(/Free gifts stay online until/)).toBeVisible();
-  const link = page.getByRole('link', { name: /localhost:3000\/for\/sarah-[a-z0-9]{8}$/ });
+  const link = page.getByRole('link', { name: /^localhost:3000\/[a-z0-9]{8}$/ });
   await expect(link).toBeVisible();
   await expect(page.getByRole('img', { name: 'QR code of your gift' })).toBeVisible();
 
   // The QR code downloads as a PNG
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download QR' }).click();
-  expect((await download).suggestedFilename()).toMatch(/^remember-me-sarah-[a-z0-9]{8}\.png$/);
+  expect((await download).suggestedFilename()).toMatch(/^remember-me-[a-z0-9]{8}\.png$/);
 
   // Back in the editor the recipient's name is fixed; the rest can still be corrected
   await page.getByRole('link', { name: 'Back to the editor' }).click();
@@ -97,9 +97,8 @@ test('a creator tries everything for free, previews the gift and publishes it fr
   await expect(upgrade.getByText(/Voice notes and trivia/)).toBeVisible();
   await upgrade.getByRole('checkbox').check();
   await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('Te quiero, Sarah');
-  await upgrade.getByRole('textbox', { name: 'Ending' }).fill('x9k2');
   await expect(upgrade.getByTestId('slug-preview')).toHaveText(
-    'localhost:3000/for/te-quiero-sarah-x9k2',
+    /^localhost:3000\/[a-z0-9]{4}\/for\/te-quiero-sarah$/,
   );
   await page.keyboard.press('Escape');
   await expect(upgrade).toBeHidden();
@@ -186,8 +185,10 @@ test('a creator tries everything for free, previews the gift and publishes it fr
   // An unknown link gets a friendly page, in the visitor's language
   const lost = await page.context().browser()!.newContext({ locale: 'es-ES' });
   const lostPage = await lost.newPage();
-  expect((await lostPage.goto('/for/no-existe-este-regalo'))?.status()).toBe(404);
-  await expect(lostPage.getByRole('heading', { name: 'Este regalo no está aquí' })).toBeVisible();
+  for (const address of ['/x9k2bd7m', '/7k2m/for/no-existe-este-regalo', '/no-existe']) {
+    expect((await lostPage.goto(address))?.status(), address).toBe(404);
+    await expect(lostPage.getByRole('heading', { name: 'Este regalo no está aquí' })).toBeVisible();
+  }
   await lost.close();
 
   // --- The creator deletes the gift for good ---

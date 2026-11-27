@@ -34,7 +34,7 @@ const labels: ExperienceLabels = {
 
 function gift(template: RevealTemplate, overrides: Partial<PublicGift> = {}): PublicGift {
   return {
-    slug: 'sarah-x9k2bd',
+    slug: 'x9k2bd7m',
     locale: 'en',
     recipientName: 'Sarah',
     senderName: 'Juan',

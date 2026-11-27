@@ -361,7 +361,7 @@ describe('GiftEditor', () => {
       await renderEditor(published());
       expect(await screen.findByRole('img', { name: 'QR code of your gift' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Download QR' })).toBeInTheDocument();
-      expect(screen.getByText('kardoo.me/for/gift-x9k2')).toBeInTheDocument();
+      expect(screen.getByText('kardoo.me/x9k2bd7m')).toBeInTheDocument();
     });
   });
 

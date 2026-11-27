@@ -73,7 +73,8 @@ export function SharePanel({
     try {
       saveFile(
         await withGrant((grant) => downloadQr(grant, format)),
-        `remember-me-${gift.slug}.${format}`,
+        // A custom link has slashes, which a file name cannot have.
+        `remember-me-${gift.slug.replaceAll('/', '-')}.${format}`,
       );
     } catch (error) {
       if (isApiError(error, 'PREMIUM_REQUIRED')) onUpgrade('QR_FORMAT');

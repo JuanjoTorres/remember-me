@@ -19,12 +19,12 @@ url=$(call POST /publish | json '.publicUrl')
 slug="${url##*/}"
 echo "published: $url"
 
-page=$(curl -fsS "$WEB/for/$slug")
+page=$(curl -fsS "$WEB/$slug")
 echo "$page" | grep -q 'For Smoke' || { echo "FAIL: gift page does not show the recipient"; exit 1; }
 echo "gift page: rendered on the server with the gift"
 
 status=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "$API/gifts/$id" -H "x-edit-token: $token")
 [ "$status" = 204 ] || { echo "FAIL: cleanup returned $status"; exit 1; }
-[ "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/for/$slug")" = 404 ] || { echo "FAIL: deleted gift still served"; exit 1; }
+[ "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/$slug")" = 404 ] || { echo "FAIL: deleted gift still served"; exit 1; }
 echo "cleanup: gift deleted, page answers 404"
 echo "OK"

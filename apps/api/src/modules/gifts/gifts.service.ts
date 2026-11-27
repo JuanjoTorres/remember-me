@@ -10,18 +10,14 @@ import {
   freeGiftExpiry,
   type GiftEditorView,
   type GiftLockedDetails,
-  joinSlug,
   MAX_CARDS_HARD_LIMIT,
   planOf,
   type PlanCheck,
   proFeaturesOf,
   type PublicGift,
-  randomSlugSuffix,
+  parseLink,
   RESERVED_SLUGS,
   type SlugAvailability,
-  SLUG_SUGGESTION_COUNT,
-  SlugSchema,
-  splitSlug,
   type UpdateGiftRequest,
 } from '@remember-me/shared-types';
 import { GiftGrantService } from '../../shared/auth/gift-grant.service.js';
@@ -45,8 +41,6 @@ import { generateSlug } from './slug-generator.js';
 
 const WITH_CARDS = { cards: true } as const;
 const SLUG_ATTEMPTS = 5;
-/** Candidates tried to find `SLUG_SUGGESTION_COUNT` free links. */
-const SUGGESTION_ATTEMPTS = 12;
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -86,20 +80,14 @@ function planApplies(gift: GiftWithCards): boolean {
 }
 
 /**
- * The link is fixed on first publication, so that it can carry the recipient's name: `slug` is the
- * new generated link, or `null` to keep the one the creator chose. A free gift is kept for a
- * limited time; a paid one never expires.
+ * Publishing keeps the link the gift was created with. A free gift is kept for a limited time; a
+ * paid one never expires.
  */
-function publishData(
-  gift: Pick<GiftWithCards, 'isPremium'>,
-  slug: string | null,
-  now = new Date(),
-) {
+function publishData(gift: Pick<GiftWithCards, 'isPremium'>, now = new Date()) {
   return {
     status: 'PUBLISHED' as const,
     publishedAt: now,
     expiresAt: gift.isPremium ? null : freeGiftExpiry(now),
-    ...(slug === null ? {} : { slug }),
   };
 }
 
@@ -117,7 +105,7 @@ export class GiftsService {
     const gift = await this.withSlugRetry(async () =>
       this.prisma.gift.create({
         data: {
-          slug: await this.freeGeneratedSlug(this.prisma, ''),
+          slug: await this.freeGeneratedSlug(this.prisma),
           editTokenHash: hash,
           locale: request.locale,
           // A draft nobody publishes is deleted, which frees its files and its link.
@@ -302,10 +290,7 @@ export class GiftsService {
         }
         return tx.gift.update({
           where: { id: giftId },
-          data: publishData(
-            gift,
-            gift.slugIsCustom ? null : await this.freeGeneratedSlug(tx, gift.recipientName, giftId),
-          ),
+          data: publishData(gift),
           include: WITH_CARDS,
         });
       }),
@@ -350,33 +335,22 @@ export class GiftsService {
   }
 
   /**
-   * Whether a custom link can be taken. For a taken one it proposes free links with the same name
-   * and another ending. Advisory: the real check happens under the lock when the link is applied.
+   * Whether a custom link can be taken. Advisory: the real check happens under the lock when the
+   * link is applied. A taken one is rare, since the code in front is random; the editor then
+   * simply draws another code.
    */
   async checkSlug(slug: string): Promise<SlugAvailability> {
     const refused = (reason: NonNullable<SlugAvailability['reason']>): SlugAvailability => ({
       slug,
       available: false,
       reason,
-      suggestions: [],
     });
-    const parts = SlugSchema.safeParse(slug).success ? splitSlug(slug) : null;
-    if (!parts) return refused('INVALID');
-    if (RESERVED_SLUGS.includes(parts.base)) return refused('RESERVED');
-    if (await this.slugIsFree(this.prisma, slug)) return { slug, available: true, suggestions: [] };
-
-    const suggestions: string[] = [];
-    for (
-      let attempt = 0;
-      attempt < SUGGESTION_ATTEMPTS && suggestions.length < SLUG_SUGGESTION_COUNT;
-      attempt += 1
-    ) {
-      const candidate = joinSlug(parts.base, randomSlugSuffix());
-      if (!suggestions.includes(candidate) && (await this.slugIsFree(this.prisma, candidate))) {
-        suggestions.push(candidate);
-      }
-    }
-    return { ...refused('TAKEN'), suggestions };
+    const name = parseLink(slug)?.name ?? null;
+    if (name === null) return refused('INVALID');
+    if (RESERVED_SLUGS.includes(name)) return refused('RESERVED');
+    return (await this.slugIsFree(this.prisma, slug))
+      ? { slug, available: true }
+      : refused('TAKEN');
   }
 
   async getPublic(slug: string, now = new Date()): Promise<PublicGift> {
@@ -413,9 +387,8 @@ export class GiftsService {
         if (!gift) return false;
         if (gift.appliedOrderIds.includes(orderId)) return true;
 
-        // Buying the link the gift already has simply makes it permanent.
-        const keepsCurrentSlug = customSlug !== null && customSlug === gift.slug;
-        const wantsCustomSlug = customSlug !== null && !keepsCurrentSlug;
+        // A link that is not this gift's already, and that nobody else has, becomes its link.
+        const wantsCustomSlug = customSlug !== null && customSlug !== gift.slug;
         const slugFree =
           wantsCustomSlug &&
           CustomSlugSchema.safeParse(customSlug).success &&
@@ -430,18 +403,12 @@ export class GiftsService {
             // A paid gift is kept for good.
             expiresAt: null,
             ...(customerEmail ? { customerEmail } : {}),
-            ...(keepsCurrentSlug ? { slugIsCustom: true, customSlugPending: false } : {}),
             ...(slugFree
               ? { slug: customSlug, slugIsCustom: true, customSlugPending: false }
               : // Someone took the link between checkout and payment: the creator picks another.
                 { customSlugPending: wantsCustomSlug ? true : gift.customSlugPending }),
             ...(gift.status === 'DRAFT' && missingToPublish(gift).length === 0
-              ? publishData(
-                  { isPremium: true },
-                  gift.slugIsCustom || slugFree || keepsCurrentSlug
-                    ? null
-                    : await this.freeGeneratedSlug(tx, gift.recipientName, giftId),
-                )
+              ? publishData({ isPremium: true })
               : {}),
           },
         });
@@ -518,14 +485,10 @@ export class GiftsService {
    * (aliases), so a new gift must never be given one of them: a QR code printed for someone else
    * would open it. The links of a deleted gift are free again.
    */
-  private async freeGeneratedSlug(
-    db: Prisma.TransactionClient | PrismaService,
-    recipientName: string,
-    forGiftId?: string,
-  ): Promise<string> {
+  private async freeGeneratedSlug(db: Prisma.TransactionClient | PrismaService): Promise<string> {
     for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt += 1) {
-      const slug = generateSlug(recipientName);
-      if (await this.slugIsFree(db, slug, forGiftId)) return slug;
+      const slug = generateSlug();
+      if (await this.slugIsFree(db, slug)) return slug;
     }
     throw new AppError('INTERNAL', 'Could not generate a free link');
   }

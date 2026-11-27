@@ -1,15 +1,9 @@
-import {
-  GENERATED_SLUG_SUFFIX_LENGTH,
-  joinSlug,
-  randomSlugSuffix,
-  slugify,
-} from '@remember-me/shared-types';
+import { GIFT_CODE_LENGTH, randomCode } from '@remember-me/shared-types';
 
 /**
- * Human-friendly generated slug, e.g. "sarah-x9k2bd7m". The link is all that protects a gift, so its
- * random ending is long: nobody finds one by trying codes behind a name. Falls back to "gift-…"
- * without a name.
+ * The link a gift is created with: a random code, e.g. "x9k2bd7m". The link is all that protects a
+ * gift, so the code is long: nobody finds one by trying codes. It says nothing about the gift.
  */
-export function generateSlug(recipientName: string): string {
-  return joinSlug(slugify(recipientName) || 'gift', randomSlugSuffix(GENERATED_SLUG_SUFFIX_LENGTH));
+export function generateSlug(): string {
+  return randomCode(GIFT_CODE_LENGTH);
 }

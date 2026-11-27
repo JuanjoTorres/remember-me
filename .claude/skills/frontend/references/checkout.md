@@ -66,19 +66,17 @@ the web code or in messages.
 ## Custom link (`apps/web/src/features/checkout/CustomSlugField.tsx`)
 
 - Props: `host` (taken from `gift.publicUrl`), `initialName`, and `onChange(slug, state)`, called with the
-  whole link. The field keeps its own two inputs: the name and the ending.
-- A custom link is always a name plus an ending (`CustomSlugSchema`). The ending starts as
-  `randomSlugSuffix()`; the creator may type their own (letters and digits, at least
-  `SLUG_SUFFIX_MIN_LENGTH`) or ask for another random one. `joinSlug` builds the link.
-- `toSlugInput` keeps the name in slug form using `slugify`; `toSuffixInput` keeps the ending to lowercase
-  letters and digits.
-- `SlugState`: `empty`, `invalid` (fails `CustomSlugSchema`, which includes a missing or short ending),
-  `checking`, `available`, `taken`, `unchecked` (the availability request failed).
+  link as it is stored ("7k2m/for/ana-luis").
+- The creator chooses only the name. The code in front is `randomCode(CUSTOM_CODE_LENGTH)`, drawn when the
+  field mounts; `customLink` joins the two and `CustomSlugSchema` validates the result.
+- `toSlugInput` keeps the name in slug form using `slugify`.
+- `SlugState`: `empty`, `invalid` (fails `CustomSlugSchema`: a name too short, too long or reserved),
+  `checking`, `available`, `taken`, `unchecked` (the availability request failed or was refused).
 - Availability: a debounced `checkSlug` (`GET /gifts/check-slug`) with an `AbortController`, restarted on
-  every change. When the link is taken, the alternatives the API returns are shown as buttons; picking one
-  fills the name and the ending. The API allows a limited number of checks per client; past it the request
-  fails and the state is `unchecked`, like any other failed check.
-- The live preview (`data-testid="slug-preview"`) shows host, the `for` path and the candidate.
+  every change. If that very link is taken the field draws another code and asks again at once, up to
+  `CODE_RETRIES` times, before it says `taken`. The API allows a limited number of checks per client;
+  past it the request fails and the state is `unchecked`.
+- The live preview (`data-testid="slug-preview"`) shows the address: host, code, `/for/` and the name.
 - In the sheet, the field starts from the recipient's name. Payment is blocked unless the state is
   `available` or `unchecked`.
 - The same field is reused by `PendingSlug` in
@@ -120,6 +118,8 @@ payment error. The request type is `CheckoutSessionRequest` in `packages/shared-
 - 2026-11-24: one payment, asked for when publishing, with the custom link as an optional extra in the same
   checkout. The sheet highlights that a paid gift never expires.
 - 2026-11-24: a custom link always carries an ending of at least 4 characters, random by default.
+- 2026-11-27 (replaces the line above): the code goes in front of the name and the system chooses it; the
+  creator only types the name. See `.claude/skills/backend/references/gifts.md`.
 
 ## Change checklist
 

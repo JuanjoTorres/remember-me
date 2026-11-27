@@ -11,9 +11,6 @@ import {
 test('a creator uses PRO features for free, pays once to publish with a custom link, and the recipient scratches the surprise', async ({
   page,
 }) => {
-  // The ending of a custom link is the creator's to choose, as long as it has four characters.
-  const ending = Date.now().toString(36);
-  const slug = `te-quiero-marta-${ending}`;
   const upgrade = page.getByRole('dialog', { name: 'The full experience' });
   await startGift(page, 'Marta');
   await addTextCard(page, 'Do you remember?');
@@ -51,14 +48,14 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
   await expect(upgrade.getByRole('button', { name: 'Pay €4.99' })).toBeVisible();
   await expect(page).toHaveURL(/\/preview$/);
   await upgrade.getByRole('checkbox').check();
-  // The link starts from the recipient's name with a random ending
-  await expect(upgrade.getByTestId('slug-preview')).toHaveText(
-    /^localhost:3000\/for\/marta-[a-z0-9]{4}$/,
-  );
+  // The link starts from the recipient's name, behind a random code the creator does not choose
+  const preview = upgrade.getByTestId('slug-preview');
+  await expect(preview).toHaveText(/^localhost:3000\/[a-z0-9]{4}\/for\/marta$/);
   await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('te-quiero-marta');
-  await upgrade.getByRole('textbox', { name: 'Ending' }).fill(ending);
-  await expect(upgrade.getByTestId('slug-preview')).toHaveText(`localhost:3000/for/${slug}`);
+  await expect(preview).toHaveText(/^localhost:3000\/[a-z0-9]{4}\/for\/te-quiero-marta$/);
   await expect(upgrade.getByText('Available')).toBeVisible();
+  // The stored link is the path of the address: "7k2m/for/te-quiero-marta".
+  const slug = ((await preview.textContent()) ?? '').replace('localhost:3000/', '');
   await upgrade.getByRole('button', { name: 'Pay €6.98' }).click();
 
   // "Stripe" sends the customer back before the webhook arrives: the page waits
@@ -85,7 +82,7 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
 
   await expect(page.getByRole('heading', { name: 'Your gift has everything' })).toBeVisible();
   await expect(page.getByText('It is published without watermark.')).toBeVisible();
-  await expect(page.getByRole('link', { name: `localhost:3000/for/${slug}` })).toBeVisible();
+  await expect(page.getByRole('link', { name: `localhost:3000/${slug}` })).toBeVisible();
   await expect(page.getByRole('img', { name: 'QR code of your gift' })).toBeVisible();
 
   // Final QR code in both formats
@@ -95,18 +92,16 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
   ] as const) {
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: button, exact: true }).click();
-    expect((await download).suggestedFilename()).toBe(`remember-me-${slug}.${extension}`);
+    expect((await download).suggestedFilename()).toBe(
+      `remember-me-${slug.replaceAll('/', '-')}.${extension}`,
+    );
   }
 
-  // A taken link gets three free alternatives with the same name
+  // The link is now taken
   const check = (await (
-    await fetch(`http://localhost:4000/gifts/check-slug?slug=${slug}`)
-  ).json()) as { available: boolean; reason: string; suggestions: string[] };
+    await fetch(`http://localhost:4000/gifts/check-slug?slug=${encodeURIComponent(slug)}`)
+  ).json()) as { available: boolean; reason: string };
   expect(check).toMatchObject({ available: false, reason: 'TAKEN' });
-  expect(check.suggestions).toHaveLength(3);
-  for (const suggestion of check.suggestions) {
-    expect(suggestion).toMatch(/^te-quiero-marta-[a-z0-9]{4}$/);
-  }
 
   // Back in the editor it is the full experience, with the name fixed
   await page.getByRole('link', { name: 'Back to the editor' }).click();
@@ -120,7 +115,7 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
     .browser()!
     .newContext({ ...devices['Pixel 7'] });
   const phone = await recipient.newPage();
-  await phone.goto(`/for/${slug}`, { waitUntil: 'networkidle' });
+  await phone.goto(`/${slug}`, { waitUntil: 'networkidle' });
   await expect(phone.getByRole('heading', { name: 'For Marta' })).toBeVisible();
   await phone.getByRole('button', { name: 'Next' }).click();
   await expect(phone.getByText('Do you remember?')).toBeVisible();
@@ -167,7 +162,7 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
     .newContext({ viewport: { width: 1280, height: 800 } });
   const laptop = await desktop.newPage();
   // Keyboard navigation only exists once the page is interactive.
-  await laptop.goto(`/for/${slug}`, { waitUntil: 'networkidle' });
+  await laptop.goto(`/${slug}`, { waitUntil: 'networkidle' });
   await expect(laptop.getByRole('heading', { name: 'For Marta' })).toBeVisible();
   await laptop.keyboard.press('ArrowRight');
   await expect(laptop.getByText('Do you remember?')).toBeVisible();

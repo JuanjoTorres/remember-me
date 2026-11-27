@@ -1,5 +1,12 @@
 import type { INestApplication } from '@nestjs/common';
-import type { CardInput, CreateGiftResponse } from '@remember-me/shared-types';
+import {
+  type CardInput,
+  type CreateGiftResponse,
+  CUSTOM_CODE_LENGTH,
+  customLink,
+  randomCode,
+} from '@remember-me/shared-types';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 
@@ -9,6 +16,14 @@ export function mediaUrl(giftId: string, fileName: string): string {
 
 export function photoCard(text = 'Remember this?'): CardInput {
   return { type: 'PHOTO_TEXT', payload: { text, imageUrl: null } };
+}
+
+/**
+ * A custom link nobody has: a fresh code in front of a name that no other test uses, e.g.
+ * "7k2m/for/te-quiero-1a2b3c4d".
+ */
+export function freeCustomLink(name = 'te-quiero'): string {
+  return customLink(randomCode(CUSTOM_CODE_LENGTH), `${name}-${randomUUID().slice(0, 8)}`);
 }
 
 export async function createGift(app: INestApplication): Promise<CreateGiftResponse> {

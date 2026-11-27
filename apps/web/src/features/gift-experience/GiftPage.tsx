@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
-import { getPublicGift, REFUSED } from '@/features/gift-experience/get-public-gift';
-import { GiftExperience } from '@/features/gift-experience/GiftExperience';
-import { experienceLabels } from '@/features/gift-experience/labels';
+import { getPublicGift, type GiftLink, REFUSED } from './get-public-gift';
+import { GiftExperience } from './GiftExperience';
+import { experienceLabels } from './labels';
 
-type Props = { params: Promise<{ slug: string }> };
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const gift = await getPublicGift((await params).slug);
-  // Gifts are private between two people: never indexed, and the link is not leaked as a referrer.
+/**
+ * Metadata of a gift page, whichever of the two link shapes led to it. Gifts are private between
+ * two people: never indexed, and the link is not leaked as a referrer.
+ */
+export async function giftPageMetadata(link: GiftLink): Promise<Metadata> {
+  const gift = await getPublicGift(link);
   const privacy = { robots: { index: false, follow: false }, referrer: 'no-referrer' } as const;
   if (!gift || gift === REFUSED) return privacy;
   const t = await getTranslations({ locale: gift.locale, namespace: 'experience' });
@@ -20,8 +21,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function GiftPage({ params }: Props) {
-  const gift = await getPublicGift((await params).slug);
+/** What a gift link opens: the experience, or what there is to say when it cannot be shown. */
+export async function GiftPage({ link }: { link: GiftLink }) {
+  const gift = await getPublicGift(link);
   if (!gift) notFound();
   if (gift === REFUSED) return <TooManyAttempts />;
   return <GiftExperience gift={gift} labels={await experienceLabels(gift)} />;

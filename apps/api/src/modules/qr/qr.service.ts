@@ -18,7 +18,8 @@ export class QrService {
 
   /** The address a recipient lands on when scanning the code. */
   targetUrl(slug: string): string {
-    return `${this.env.WEB_ORIGIN}/for/${slug}`;
+    // The slug is the path of the link: "x9k2bd7m" or, for a custom link, "7k2m/for/ana-luis".
+    return `${this.env.WEB_ORIGIN}/${slug}`;
   }
 
   async render(grant: GiftGrantClaims, format: QrFormat): Promise<QrImage> {
@@ -35,7 +36,7 @@ export class QrService {
 
     const url = this.targetUrl(grant.slug);
     const options = { errorCorrectionLevel: 'Q', margin: 2 } as const;
-    const fileName = `remember-me-${grant.slug}.${format}`;
+    const fileName = `remember-me-${grant.slug.replaceAll('/', '-')}.${format}`;
     if (format === 'svg') {
       const svg = await QRCode.toString(url, { ...options, type: 'svg' });
       return { body: Buffer.from(svg), contentType: 'image/svg+xml', fileName };

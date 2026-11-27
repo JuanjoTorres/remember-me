@@ -20,7 +20,7 @@ export function giftView(overrides: Partial<GiftEditorView> = {}): GiftEditorVie
   const plan = overrides.plan ?? 'FREE';
   return {
     id: '3f0e6f0a-58a1-4d53-a4a9-3c2a0f6d2b11',
-    slug: 'gift-x9k2',
+    slug: 'x9k2bd7m',
     status: 'DRAFT',
     plan,
     capabilities: PLAN_CAPABILITIES[plan],
@@ -35,7 +35,7 @@ export function giftView(overrides: Partial<GiftEditorView> = {}): GiftEditorVie
     locked: false,
     expiresAt: '2030-01-08T00:00:00.000Z',
     customSlugPending: false,
-    publicUrl: 'https://kardoo.me/for/gift-x9k2',
+    publicUrl: 'https://kardoo.me/x9k2bd7m',
     grant: 'grant-token',
     grantExpiresAt: '2030-01-01T00:00:00.000Z',
     ...overrides,

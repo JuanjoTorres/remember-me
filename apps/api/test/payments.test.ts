@@ -23,7 +23,7 @@ import {
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { createTestApp } from './create-test-app.js';
-import { createGift, editor, photoCard } from './helpers.js';
+import { createGift, editor, freeCustomLink, photoCard } from './helpers.js';
 
 const WEBHOOK_SECRET = 'whsec_integration_test_secret';
 const WEB = 'http://localhost:3000';
@@ -303,19 +303,19 @@ describe('payments', () => {
 
     it('adds the custom link as a second line item (order bump)', async () => {
       const { gift } = await readyGift();
-      const { orderId } = await startCheckout(gift, 'te-quiero-ana-x9k2');
+      const { orderId } = await startCheckout(gift, '7k2m/for/te-quiero-ana');
       const form = Object.fromEntries(stripeCalls.at(-1)!.form);
       expect(form).toMatchObject({
         'line_items[0][price]': 'price_premium_test',
         'line_items[1][price]': 'price_custom_slug_test',
         'line_items[1][quantity]': '1',
-        'metadata[customSlug]': 'te-quiero-ana-x9k2',
+        'metadata[customSlug]': '7k2m/for/te-quiero-ana',
       });
       expect(
         await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } }),
       ).toMatchObject({
         includeCustomSlug: true,
-        customSlug: 'te-quiero-ana-x9k2',
+        customSlug: '7k2m/for/te-quiero-ana',
       });
     });
 
@@ -339,9 +339,17 @@ describe('payments', () => {
         includeCustomSlug: true,
         customSlug: 'Not Valid',
       }).expect(400);
-      await checkout(gift.grant, { ...base, includeCustomSlug: true, customSlug: 'create' }).expect(
-        400,
-      );
+      // Not a custom link: a reserved name, a word instead of a code, the old format, and the
+      // generated link the gift already has.
+      for (const customSlug of [
+        'create',
+        '7k2m/for/create',
+        'luis/for/ana',
+        'ana-luis-x9k2',
+        gift.slug,
+      ]) {
+        await checkout(gift.grant, { ...base, includeCustomSlug: true, customSlug }).expect(400);
+      }
       expect(stripeCalls).toEqual([]);
       expect(await prisma().paymentOrder.count({ where: { giftId: gift.id } })).toBe(0);
     });
@@ -427,7 +435,7 @@ describe('payments', () => {
     it('leaves one payable session when a request for another link overtakes a slow one', async () => {
       const { gift } = await readyGift();
       const body = { giftId: gift.id, ...urls(gift.id) };
-      const slug = `otro-enlace-${randomUUID().slice(0, 8)}`;
+      const slug = freeCustomLink('otro-enlace');
       // Only the first creation is held: the newer request gets its page while the slow one waits.
       const stripe = holdNextSessionCreation();
       try {
@@ -472,7 +480,7 @@ describe('payments', () => {
     it('expires the previous session when the creator changes the order', async () => {
       const { gift } = await readyGift();
       const first = await startCheckout(gift);
-      const second = await startCheckout(gift, 'otro-enlace-mejor');
+      const second = await startCheckout(gift, '7k2m/for/otro-enlace-mejor');
 
       expect(second.sessionId).not.toBe(first.sessionId);
       expect(stripeCalls.map((call) => call.path)).toContain(
@@ -594,7 +602,7 @@ describe('payments', () => {
 
     it('applies the custom link bought with the order bump', async () => {
       const { gift, client } = await readyGift();
-      const slug = `te-quiero-${randomUUID().slice(0, 8)}`;
+      const slug = freeCustomLink('te-quiero');
       const { orderId, sessionId } = await startCheckout(gift, slug);
       await deliver(paidEvent(orderId, sessionId)).expect(200);
       expect((await client.get()).body).toMatchObject({
@@ -607,7 +615,7 @@ describe('payments', () => {
 
     it('still upgrades when the custom link was taken in the meantime', async () => {
       const { gift, client } = await readyGift();
-      const slug = `nuestro-viaje-${randomUUID().slice(0, 8)}`;
+      const slug = freeCustomLink('nuestro-viaje');
       const { orderId, sessionId } = await startCheckout(gift, slug);
 
       const rival = await readyGift();
@@ -618,7 +626,7 @@ describe('payments', () => {
       const view = (await client.get()).body as GiftEditorView;
       expect(view).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED', customSlugPending: true });
       expect(view.slug).not.toBe(slug);
-      await client.changeSlug(`${slug}-2026`).expect(200);
+      await client.changeSlug(freeCustomLink('nuestro-viaje')).expect(200);
     });
 
     it('waits for the money with delayed payment methods', async () => {
@@ -713,15 +721,23 @@ describe('payments', () => {
       ).toBe('REFUND_DUE');
     });
 
-    it('makes the bought link permanent when it is the one the gift already has', async () => {
+    it('changes nothing when a later order buys the custom link the gift already has', async () => {
       const { gift, client } = await readyGift();
-      const { orderId, sessionId } = await startCheckout(gift, gift.slug);
+      const slug = freeCustomLink('ya-es-mio');
+      const { orderId, sessionId } = await startCheckout(gift, slug);
       await deliver(paidEvent(orderId, sessionId)).expect(200);
+
+      await app.get(EventBus).publish(PaymentSucceededEvent, {
+        orderId: `order-${randomUUID()}`,
+        giftId: gift.id,
+        customSlug: slug,
+      });
       expect((await client.get()).body).toMatchObject({
         status: 'PUBLISHED',
-        slug: gift.slug,
+        slug,
         customSlugPending: false,
       });
+      await http().get(`/public/gifts/${slug}`).expect(200);
     });
 
     it('acknowledges events it does not use and sessions it does not know', async () => {

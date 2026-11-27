@@ -19,12 +19,12 @@ name.
 
 Which language a screen uses:
 
-| Screen                                | Language                                                                |
-| ------------------------------------- | ----------------------------------------------------------------------- |
-| Home, privacy, editor, checkout       | The visitor's                                                           |
-| Gift experience and its page metadata | The gift's `locale`, fixed when the gift was created (`createGift`)     |
-| Gift not-found page                   | The visitor's                                                           |
-| Gift error page                       | `<html lang>`, from the local texts in `apps/web/src/app/for/error.tsx` |
+| Screen                                | Language                                                                   |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| Home, privacy, editor, checkout       | The visitor's                                                              |
+| Gift experience and its page metadata | The gift's `locale`, fixed when the gift was created (`createGift`)        |
+| Gift not-found page                   | The visitor's                                                              |
+| Gift error page                       | `<html lang>`, from the local texts in `apps/web/src/app/(gift)/error.tsx` |
 
 ## How texts reach components
 
@@ -107,7 +107,7 @@ page; import it only from server components.
 - Namespace: a new top-level object in both files, and a row in the table above.
 - Language: `LOCALES`, a new file in `apps/web/messages`, `LocaleSchema` in shared-types (and the API side),
   the comparison in `apps/web/test/messages.test.ts`, and the `TEXT` object in
-  `apps/web/src/app/for/error.tsx`.
+  `apps/web/src/app/(gift)/error.tsx`.
 
 ## Decisions
 

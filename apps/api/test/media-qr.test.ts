@@ -15,7 +15,7 @@ import { PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { createTestApp } from './create-test-app.js';
-import { createGift, editor, makePremium, photoCard } from './helpers.js';
+import { createGift, editor, freeCustomLink, makePremium, photoCard } from './helpers.js';
 
 // jsqr is CommonJS with a `default` export; its typings and Node's ESM interop disagree.
 const jsQR = ((jsqrModule as unknown as { default?: typeof jsqrModule }).default ??
@@ -305,10 +305,10 @@ describe('media and qr', () => {
       expect(response.headers['content-type']).toBe('image/png');
       expect(response.headers['content-disposition']).toContain(`remember-me-${gift.slug}.png`);
       expect(await decodePng(response)).toEqual({
-        text: `http://localhost:3000/for/${gift.slug}`,
+        text: `http://localhost:3000/${gift.slug}`,
         width: 512,
       });
-      expect(gift.publicUrl).toBe(`http://localhost:3000/for/${gift.slug}`);
+      expect(gift.publicUrl).toBe(`http://localhost:3000/${gift.slug}`);
     });
 
     it('keeps SVG for premium gifts', async () => {
@@ -346,7 +346,7 @@ describe('media and qr', () => {
 
     it('never encodes a dead link: a link replaced after publication keeps working', async () => {
       const { gift, grant, client } = await setup({ published: true });
-      const custom = `para-sarah-${gift.id.slice(0, 8)}`;
+      const custom = freeCustomLink('para-sarah');
       await app.get(EventBus).publish(PaymentSucceededEvent, {
         orderId: `order-${gift.id}`,
         giftId: gift.id,
@@ -363,13 +363,14 @@ describe('media and qr', () => {
           res.on('end', () => done(null, Buffer.concat(chunks)));
         });
       const { text } = await decodePng(response);
-      expect(text).toBe(`http://localhost:3000/for/${gift.slug}`);
+      expect(text).toBe(`http://localhost:3000/${gift.slug}`);
       for (const slug of [gift.slug, custom]) {
         expect((await http().get(`/public/gifts/${slug}`).expect(200)).body.slug).toBe(custom);
       }
-      // The old link cannot be taken by somebody else.
-      const availability = await http().get('/gifts/check-slug').query({ slug: gift.slug });
-      expect(availability.body).toMatchObject({ available: false, reason: 'TAKEN' });
+      // The old link stays reserved for this gift: no new gift is ever given it.
+      expect(
+        await app.get(PrismaService).giftSlugAlias.findUnique({ where: { slug: gift.slug } }),
+      ).toMatchObject({ giftId: gift.id });
     });
 
     it('refuses drafts, unknown formats and missing grants', async () => {
