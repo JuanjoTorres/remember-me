@@ -78,8 +78,9 @@ the web code or in messages.
   `valid`; `customSlug` in the checkout request is the name.
 - The same field is reused by `PendingSlug` in
   `apps/web/src/features/gift-creator/components/SharePanel.tsx` when the name paid for could not be used; there
-  the button needs `valid` and calls `PUT /gifts/:id/slug` with the name; a failure shows
-  `pendingSlugError`.
+  the button needs `valid` and calls `PUT /gifts/:id/slug` with the name. A failure of any kind (a
+  refusal, a rejected promise) shows `pendingSlugError`, leaves the button usable, and the message goes
+  away when the creator types another name.
 
 ## Paying
 

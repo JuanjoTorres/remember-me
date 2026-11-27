@@ -19,6 +19,7 @@ import {
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GRANT_TTL_SECONDS } from '../src/shared/auth/gift-grant.service.js';
+import { GiftsService } from '../src/modules/gifts/gifts.service.js';
 import { GiftDeletedEvent, PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
@@ -621,6 +622,45 @@ describe('gifts', () => {
 
     it('has no way to ask which links exist', async () => {
       await http().get('/gifts/check-slug').query({ slug: '7k2m/for/ana-luis' }).expect(400);
+    });
+
+    it('gives one link, not two, when the name is chosen twice at the same moment', async () => {
+      const { gift, client } = await publishedGift();
+      await app
+        .get(PrismaService)
+        .gift.update({ where: { id: gift.id }, data: { customSlugPending: true } });
+
+      // Both requests are let through the edit-token check together, before either changes the gift.
+      const service = app.get(GiftsService) as unknown as {
+        authorize(giftId: string, access: object): Promise<unknown>;
+      };
+      const authorize = service.authorize.bind(service);
+      let arrived = 0;
+      let open!: () => void;
+      const bothIn = new Promise<void>((resolve) => (open = resolve));
+      const gate = vi.spyOn(service, 'authorize').mockImplementation(async (giftId, access) => {
+        const authorized = await authorize(giftId, access);
+        arrived += 1;
+        if (arrived === 2) open();
+        await bothIn;
+        return authorized;
+      });
+      try {
+        const responses = await Promise.all([
+          client.changeSlug(freeName('uno')),
+          client.changeSlug(freeName('otro')),
+        ]);
+        expect(responses.map((response) => response.status).sort()).toEqual([200, 402]);
+      } finally {
+        gate.mockRestore();
+      }
+      // The gift has the one link it was given, and its first link as the only former one.
+      const stored = await app.get(PrismaService).gift.findUniqueOrThrow({
+        where: { id: gift.id },
+        include: { slugAliases: true },
+      });
+      expect(stored.customSlugPending).toBe(false);
+      expect(stored.slugAliases.map((alias) => alias.slug)).toEqual([gift.slug]);
     });
 
     it('only lets a gift choose a name for its link when a paid custom link is pending', async () => {

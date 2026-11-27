@@ -17,7 +17,6 @@ interface SharePanelProps {
   editToken: string;
   withGrant: <T>(call: (grant: string) => Promise<T>) => Promise<T>;
   onUpgrade: (reason: UpgradeReason) => void;
-  /** Applies the paid custom link when the first choice was taken. Resolves to false if refused. */
   /** Gives the gift its custom link with this name; resolves to whether it worked. */
   onChangeSlug: (name: string) => Promise<boolean>;
 }
@@ -166,6 +165,8 @@ function PendingSlug({ gift, onChangeSlug }: Pick<SharePanelProps, 'gift' | 'onC
       <CustomSlugField
         host={new URL(gift.publicUrl).host}
         onChange={(next, nextState) => {
+          // Another name is another attempt: the error was about the earlier one.
+          if (next !== slug) setFailed(false);
           setSlug(next);
           setState(nextState);
         }}
@@ -176,7 +177,9 @@ function PendingSlug({ gift, onChangeSlug }: Pick<SharePanelProps, 'gift' | 'onC
         disabled={state !== 'valid'}
         onClick={async () => {
           setBusy(true);
-          const changed = await onChangeSlug(slug);
+          setFailed(false);
+          // Whatever goes wrong, a refusal or no connection, the creator is told and can retry.
+          const changed = await onChangeSlug(slug).catch(() => false);
           setBusy(false);
           setFailed(!changed);
         }}

@@ -58,7 +58,8 @@ token cannot be rotated or recovered.
 - `withSlugRetry` reruns a write that hit a unique violation on the slug, up to `SLUG_ATTEMPTS` times.
 - A custom link is applied in `applyPayment` (bought as an order bump; `customSlug` in the order and in
   the event is the name), or with `changeSlug`, which is only allowed while `customSlugPending` is true
-  (otherwise `PREMIUM_REQUIRED` with `CUSTOM_SLUG`). Both set `slugIsCustom` and clear
+  (otherwise `PREMIUM_REQUIRED` with `CUSTOM_SLUG`); `changeSlug` reads the flag under the row lock, so
+  two requests sent at once give one link, not two. Both set `slugIsCustom` and clear
   `customSlugPending`. `customSlugPending` is only set when a paid name cannot be used, which the
   checkout's validation normally rules out.
 - `slugIsFree`: no gift has the slug and no other gift has it as an alias.

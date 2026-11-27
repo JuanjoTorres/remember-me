@@ -301,15 +301,17 @@ export class GiftsService {
    * creator chooses now. The code in front of it is drawn here.
    */
   async changeSlug(giftId: string, access: EditAccess, name: string): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, access);
-    if (!gift.customSlugPending) {
-      throw new AppError('PREMIUM_REQUIRED', 'A custom link is a paid extra', {
-        capability: 'CUSTOM_SLUG',
-      });
-    }
+    await this.authorize(giftId, access);
     const updated = await this.withSlugRetry(() =>
       this.prisma.$transaction(async (tx) => {
+        // Checked under the lock: of two requests sent at once only the first finds the link
+        // still to be chosen, so one payment never gives a gift two custom links.
         const current = await this.lock(tx, giftId);
+        if (!current.customSlugPending) {
+          throw new AppError('PREMIUM_REQUIRED', 'A custom link is a paid extra', {
+            capability: 'CUSTOM_SLUG',
+          });
+        }
         const slug = await this.freeCustomLink(tx, name);
         await this.keepOldLink(tx, current, slug);
         return tx.gift.update({
