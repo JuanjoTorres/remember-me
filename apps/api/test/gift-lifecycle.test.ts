@@ -112,13 +112,13 @@ describe('gift lifecycle', () => {
       ).toMatchObject({ available: true });
     });
 
-    it('deletes a free gift a year after it was published, not before', async () => {
+    it('deletes a free gift three months after it was published, not before', async () => {
       const { gift } = await publishedFree();
-      await lifecycle().deleteExpired(new Date(Date.now() + 364 * DAY_MS));
+      await lifecycle().deleteExpired(new Date(Date.now() + 88 * DAY_MS));
       expect(await exists(gift.id)).toBe(true);
       await http().get(`/public/gifts/${gift.slug}`).expect(200);
 
-      await lifecycle().deleteExpired(new Date(Date.now() + 367 * DAY_MS));
+      await lifecycle().deleteExpired(new Date(Date.now() + 93 * DAY_MS));
       expect(await exists(gift.id)).toBe(false);
       await http().get(`/public/gifts/${gift.slug}`).expect(404);
     });

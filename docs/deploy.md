@@ -91,7 +91,7 @@ How to check a dump by restoring it into a scratch database is in
 - **Refunds due:** a payment that could not be delivered (paid twice, gift deleted before paying) sets
   `payment_orders.status = 'REFUND_DUE'` and logs `REFUND DUE`. Refund it from the Stripe Dashboard.
 - **Expired gifts:** every night (03:15 UTC) the API deletes drafts older than 7 days and free gifts
-  published more than a year ago, with their files in R2. Paid gifts are never deleted. Look for
+  published more than three months ago, with their files in R2. Paid gifts are never deleted. Look for
   `GiftLifecycle` in the API logs.
 - **Anniversary email:** switched off for now (technical debt). The API schedules no email job, so
   `MAIL_DRIVER` stays `log` and no mail provider has to be set up.

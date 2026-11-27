@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CardInputSchema } from './gifts.js';
 import {
+  addMonths,
   addYears,
   draftExpiry,
   editableUntil,
@@ -120,10 +121,18 @@ describe('slugs', () => {
 describe('lifecycle dates', () => {
   const start = new Date('2026-03-01T10:00:00.000Z');
 
-  it('gives a draft seven days and a free gift one year', () => {
+  it('gives a draft seven days and a free gift three months', () => {
     expect(draftExpiry(start).toISOString()).toBe('2026-03-08T10:00:00.000Z');
-    expect(freeGiftExpiry(start).toISOString()).toBe('2027-03-01T10:00:00.000Z');
+    expect(freeGiftExpiry(start).toISOString()).toBe('2026-06-01T10:00:00.000Z');
     expect(addYears(start, -1).toISOString()).toBe('2025-03-01T10:00:00.000Z');
+  });
+
+  it('counts months to the same day, or to the end of a shorter month', () => {
+    const at = (iso: string) => new Date(`${iso}T10:00:00.000Z`);
+    expect(addMonths(at('2026-11-27'), 3).toISOString()).toBe('2027-02-27T10:00:00.000Z');
+    expect(addMonths(at('2026-11-30'), 3).toISOString()).toBe('2027-02-28T10:00:00.000Z');
+    expect(addMonths(at('2027-11-30'), 3).toISOString()).toBe('2028-02-29T10:00:00.000Z');
+    expect(addMonths(at('2026-01-31'), 3).toISOString()).toBe('2026-04-30T10:00:00.000Z');
   });
 
   it('ends the correction window after the grace period, or earlier when locked by hand', () => {

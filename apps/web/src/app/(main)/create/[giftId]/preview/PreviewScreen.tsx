@@ -1,7 +1,7 @@
 'use client';
 
 import type { GiftEditorView, Locale, PublicGift } from '@remember-me/shared-types';
-import { FREE_GIFT_TTL_YEARS, PLAN_CAPABILITIES } from '@remember-me/shared-types';
+import { FREE_GIFT_TTL_MONTHS, PLAN_CAPABILITIES } from '@remember-me/shared-types';
 import { createTranslator, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -116,7 +116,7 @@ function Preview({
                 .map((feature) => tCheckout(`proFeature.${feature}`, { max: freeCards }))
                 .join(' · '),
             })
-          : t('freeNote', { brand: BRAND_NAME, years: FREE_GIFT_TTL_YEARS });
+          : t('freeNote', { brand: BRAND_NAME, months: FREE_GIFT_TTL_MONTHS });
 
   return (
     <div className="bg-night fixed inset-0 z-20 flex flex-col">

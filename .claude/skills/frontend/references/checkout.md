@@ -49,7 +49,7 @@ keys are typed from the English file), call `editor.attempt` from the editor, an
 - Content: the reason text; for `PRO_FEATURES` the PRO features the gift uses (`gift.proFeatures`, message
   keys `proFeature.*`); the feature list (`FEATURES`, message keys `feature*`), which starts with
   `featureForever`: a paid gift never expires, with a hint that free gifts are deleted after
-  `FREE_GIFT_TTL_YEARS`; the custom link extra; errors; and the pay button with the total.
+  `FREE_GIFT_TTL_MONTHS`; the custom link extra; errors; and the pay button with the total.
 - The reason text receives `max` from `PLAN_CAPABILITIES.FREE.maxCards` and `brand` from `BRAND_NAME`.
 - It is rendered by `GiftEditor` (above the card sheet in the stack, so a refused card keeps its form open
   underneath), by `PreviewScreen` and by `PublishedScreen`.
@@ -87,7 +87,9 @@ the web code or in messages.
 
 ## Paying
 
-`pay()` in the sheet: with a custom link it checks availability once more; then `createCheckoutSession`
+`pay()` in the sheet does not check the link again (the field did, and a second check would spend the
+creator's budget and fail the payment with it; a link taken meanwhile becomes `customSlugPending`). It
+calls `createCheckoutSession`
 inside `withGrant` (`POST /payments/checkout-session`) with `giftId`, `includeCustomSlug`, `customSlug`,
 `successUrl` (the gift's success page on the current origin) and `cancelUrl` (`cancelPath`, or the editor); then
 `redirect(session.checkoutUrl)`. `CONFLICT` shows the "already premium" message, anything else the generic

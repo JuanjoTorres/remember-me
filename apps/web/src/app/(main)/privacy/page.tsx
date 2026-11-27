@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { DRAFT_TTL_DAYS, EDIT_GRACE_HOURS, FREE_GIFT_TTL_YEARS } from '@remember-me/shared-types';
+import { DRAFT_TTL_DAYS, EDIT_GRACE_HOURS, FREE_GIFT_TTL_MONTHS } from '@remember-me/shared-types';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { BRAND_NAME } from '@/features/shared/brand';
@@ -29,7 +29,7 @@ export default async function PrivacyPage() {
             {/* How long things are kept comes from the shared rules, never from the text itself. */}
             {t(`${section}Text`, {
               draftDays: DRAFT_TTL_DAYS,
-              freeYears: FREE_GIFT_TTL_YEARS,
+              freeMonths: FREE_GIFT_TTL_MONTHS,
               graceHours: EDIT_GRACE_HOURS,
             })}
           </p>

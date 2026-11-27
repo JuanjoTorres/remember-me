@@ -5,6 +5,7 @@ import {
   CreateGiftResponseSchema,
   DRAFT_TTL_DAYS,
   EDIT_GRACE_HOURS,
+  freeGiftExpiry,
   type GiftEditorView,
   GiftEditorViewSchema,
   GiftLockedDetailsSchema,
@@ -818,12 +819,12 @@ describe('gifts', () => {
       near(gift.expiresAt, Date.now() + DRAFT_TTL_DAYS * DAY_MS);
     });
 
-    it('gives a free gift a year from its publication', async () => {
+    it('gives a free gift three months from its publication', async () => {
       const { gift } = await publishedGift();
-      const published = new Date(gift.publishedAt!);
-      const inAYear = new Date(published);
-      inAYear.setUTCFullYear(published.getUTCFullYear() + 1);
-      expect(gift.expiresAt).toBe(inAYear.toISOString());
+      expect(gift.expiresAt).toBe(freeGiftExpiry(new Date(gift.publishedAt!)).toISOString());
+      const days = (Date.parse(gift.expiresAt!) - Date.parse(gift.publishedAt!)) / 86_400_000;
+      expect(days).toBeGreaterThanOrEqual(89);
+      expect(days).toBeLessThanOrEqual(92);
     });
 
     it('never expires a paid gift, draft or published', async () => {

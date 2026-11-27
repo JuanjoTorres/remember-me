@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
 import { TextInput } from '@/features/shared/ui/Field';
 import { checkSlug } from './api';
 
-/** `unchecked`: the availability request failed; paying checks again. */
+/** `unchecked`: the availability request failed or was refused; the link can still be paid for. */
 export type SlugState = 'empty' | 'invalid' | 'checking' | 'available' | 'taken' | 'unchecked';
 
 /** Longest ending a creator may type; the name keeps the rest of the link. */

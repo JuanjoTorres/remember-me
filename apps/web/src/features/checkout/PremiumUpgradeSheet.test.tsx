@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GiftEditorView } from '@remember-me/shared-types';
 import { giftView, renderApp } from '../../../test/render';
+import { ApiClientError } from '../shared/api/client';
 import * as api from './api';
 import { PremiumUpgradeSheet } from './PremiumUpgradeSheet';
 import type { UpgradeReason } from './upgrade-triggers';
@@ -141,7 +142,7 @@ describe('PremiumUpgradeSheet', () => {
     open('WATERMARK');
     expect(screen.getByText('An eternal memory: it never expires')).toBeInTheDocument();
     expect(
-      screen.getByText('Free gifts are deleted 1 year after they are published.'),
+      screen.getByText('Free gifts are deleted 3 months after they are published.'),
     ).toBeInTheDocument();
   });
 
@@ -228,6 +229,42 @@ describe('PremiumUpgradeSheet', () => {
     expect(api.createCheckoutSession).toHaveBeenCalledWith(
       'grant-token',
       expect.objectContaining({ customSlug: 'taken-link-p4x9' }),
+    );
+  });
+
+  it('pays without checking the link a second time', async () => {
+    const redirect = open('MAX_CARDS');
+    await screen.findByRole('button', { name: 'Pay €4.99' });
+    await userEvent.click(screen.getByRole('checkbox'));
+    await typeLink('laura', 'x9k2');
+    expect(await screen.findByText('Available')).toBeInTheDocument();
+    const checks = vi.mocked(api.checkSlug).mock.calls.length;
+
+    await userEvent.click(screen.getByRole('button', { name: 'Pay €6.98' }));
+    await vi.waitFor(() => expect(redirect).toHaveBeenCalled());
+    expect(api.checkSlug).toHaveBeenCalledTimes(checks);
+    expect(api.createCheckoutSession).toHaveBeenCalledWith(
+      'grant-token',
+      expect.objectContaining({ includeCustomSlug: true, customSlug: 'laura-x9k2' }),
+    );
+  });
+
+  it('still lets a creator who ran out of checks pay for the link', async () => {
+    vi.mocked(api.checkSlug).mockRejectedValue(
+      new ApiClientError(429, 'RATE_LIMITED', 'slow down'),
+    );
+    const redirect = open('MAX_CARDS');
+    await screen.findByRole('button', { name: 'Pay €4.99' });
+    await userEvent.click(screen.getByRole('checkbox'));
+    await typeLink('laura', 'x9k2');
+
+    const pay = screen.getByRole('button', { name: 'Pay €6.98' });
+    await vi.waitFor(() => expect(pay).toBeEnabled());
+    await userEvent.click(pay);
+    await vi.waitFor(() => expect(redirect).toHaveBeenCalled());
+    expect(api.createCheckoutSession).toHaveBeenCalledWith(
+      'grant-token',
+      expect.objectContaining({ customSlug: 'laura-x9k2' }),
     );
   });
 

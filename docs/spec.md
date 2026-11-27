@@ -44,14 +44,14 @@ optional trivia question, ending in an interactive surprise reveal.
 Prices live in Stripe (`STRIPE_PRICE_ID_PREMIUM`, `STRIPE_PRICE_ID_CUSTOM_SLUG`); the UI reads amounts from
 the API, never from constants. Limits live in one `PLAN_CAPABILITIES` contract in `shared-types`.
 
-|                                    | FREE                    | PREMIUM (one-time, e.g. 4.99 €)      |
-| ---------------------------------- | ----------------------- | ------------------------------------ |
-| Cards per gift                     | 3                       | Unlimited                            |
-| Card types                         | `PHOTO_TEXT`            | `PHOTO_TEXT`, `AUDIO_NOTE`, `TRIVIA` |
-| Reveal templates                   | Basic                   | `SCRATCH_CARD`, `TICKET`, `GIFT_BOX` |
-| Watermark "Created with kardoo.me" | Yes                     | No                                   |
-| QR download                        | Standard PNG            | High quality SVG/PNG                 |
-| Kept online                        | 1 year from publication | Forever                              |
+|                                    | FREE                      | PREMIUM (one-time, e.g. 4.99 €)      |
+| ---------------------------------- | ------------------------- | ------------------------------------ |
+| Cards per gift                     | 3                         | Unlimited                            |
+| Card types                         | `PHOTO_TEXT`              | `PHOTO_TEXT`, `AUDIO_NOTE`, `TRIVIA` |
+| Reveal templates                   | Basic                     | `SCRATCH_CARD`, `TICKET`, `GIFT_BOX` |
+| Watermark "Created with kardoo.me" | Yes                       | No                                   |
+| QR download                        | Standard PNG              | High quality SVG/PNG                 |
+| Kept online                        | 3 months from publication | Forever                              |
 
 The plan limits apply to published gifts. A draft may use everything; what it uses decides at publication
 whether it must be paid for. A draft that is never published is deleted 7 days after it was started.

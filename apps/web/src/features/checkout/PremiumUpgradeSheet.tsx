@@ -1,7 +1,7 @@
 'use client';
 
 import type { GiftEditorView } from '@remember-me/shared-types';
-import { FREE_GIFT_TTL_YEARS, PLAN_CAPABILITIES } from '@remember-me/shared-types';
+import { FREE_GIFT_TTL_MONTHS, PLAN_CAPABILITIES } from '@remember-me/shared-types';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -10,7 +10,7 @@ import { BRAND_NAME } from '@/features/shared/brand';
 import { formatPrice } from '@/features/shared/format';
 import { Button } from '@/features/shared/ui/Button';
 import { Sheet } from '@/features/shared/ui/Sheet';
-import { checkSlug, createCheckoutSession, getPrices } from './api';
+import { createCheckoutSession, getPrices } from './api';
 import { CustomSlugField, type SlugState } from './CustomSlugField';
 import type { UpgradeReason } from './upgrade-triggers';
 
@@ -73,11 +73,11 @@ export function PremiumUpgradeSheet({
     setError(null);
     setPaying(true);
     try {
+      // The field has already checked the link, or could not (the creator ran out of checks):
+      // asking again here would spend another check and make the payment fail with it. A link
+      // taken in the meantime is not lost money: the gift is upgraded and the creator picks
+      // another link afterwards (`customSlugPending`).
       const customSlug = includeSlug ? slug : undefined;
-      if (customSlug !== undefined && !(await checkSlug(customSlug)).available) {
-        setSlugState('taken');
-        return;
-      }
       const origin = window.location.origin;
       const session = await withGrant((grant) =>
         createCheckoutSession(grant, {
@@ -127,7 +127,7 @@ export function PremiumUpgradeSheet({
               {t(feature)}
               {feature === 'featureForever' && (
                 <span className="text-ink-soft block text-sm font-normal">
-                  {t('featureForeverHint', { years: FREE_GIFT_TTL_YEARS })}
+                  {t('featureForeverHint', { months: FREE_GIFT_TTL_MONTHS })}
                 </span>
               )}
             </span>

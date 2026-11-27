@@ -140,8 +140,9 @@ A delivered gift must not be reused for someone else.
   sends the grant of its last answer back in `x-edit-session` (`EDIT_SESSION_HEADER`). After the window,
   a request may edit only if it presents a valid grant of this gift with `editing: true`. Such a grant
   is issued while the gift is editable, or to a request that already holds one: an editing session that
-  was open in time goes on, renewed by every answer (also a reload), and ends when its grant runs out
-  (`GRANT_TTL_SECONDS` without a request). Opening the link after the window gets `locked: true` and a
+  was open in time goes on, renewed by every answer, and ends when its grant runs out
+  (`GRANT_TTL_SECONDS` without a request). The browser keeps the grant only in memory: reloading the page
+  after the window ends the session, because the first request of the new page carries no grant. Opening the link after the window gets `locked: true` and a
   grant with `editing: false`, which starts no session.
 - A request that may not edit is refused by `update`, `addCard`, `updateCard`, `removeCard` and
   `reorderCards` with `GIFT_LOCKED`, `details.scope = 'GIFT'` (`assertEditable`).
@@ -158,11 +159,11 @@ A delivered gift must not be reused for someone else.
 
 `gifts.expires_at` is when the gift and its files are deleted; `null` means never.
 
-| State              | `expiresAt`                                               | Set in         |
-| ------------------ | --------------------------------------------------------- | -------------- |
-| Draft, never paid  | creation plus `DRAFT_TTL_DAYS` (`draftExpiry`)            | `create`       |
-| Published, FREE    | publication plus `FREE_GIFT_TTL_YEARS` (`freeGiftExpiry`) | `publishData`  |
-| Paid, draft or not | `null`                                                    | `applyPayment` |
+| State              | `expiresAt`                                                | Set in         |
+| ------------------ | ---------------------------------------------------------- | -------------- |
+| Draft, never paid  | creation plus `DRAFT_TTL_DAYS` (`draftExpiry`)             | `create`       |
+| Published, FREE    | publication plus `FREE_GIFT_TTL_MONTHS` (`freeGiftExpiry`) | `publishData`  |
+| Paid, draft or not | `null`                                                     | `applyPayment` |
 
 - `getPublic` answers `NOT_FOUND` for a gift past its expiry, even before the clean-up has run.
 - `GiftLifecycleService.deleteExpired` deletes every gift with `expiresAt <= now`, one transaction per
@@ -263,7 +264,9 @@ retry. Cards and aliases go with the gift (cascade). Payment orders are kept.
 - 2026-11-27: what ends 48 hours after publication is the edit link. Whoever opened the editor before
   that and is still editing keeps saving; whoever opens the link later finds the gift locked. (Chosen by
   the implementation, not stated by the owner: the session ends after `GRANT_TTL_SECONDS` without a
-  request.)
+  request, there is no absolute limit, and a reload of the page ends it. All three await the owner.)
+- 2026-11-27: free gifts are kept 3 months from publication, not a year (replaces the figure of
+  2026-11-24). Paid gifts never expire.
 - 2026-11-27: the anniversary email is switched off and recorded as technical debt (section above).
 - 2026-11-27: there is no production yet, only staging. A deployment that deletes old staging gifts (the
   expiry backfill of `20261124210813_gift_lifecycle`) needs no precaution.

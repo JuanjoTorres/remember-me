@@ -86,7 +86,7 @@ describe('PreviewScreen', () => {
     const gift = ready();
     const api = await renderPreview(gift);
     expect(screen.getByTestId('publish-note')).toHaveTextContent(
-      'Free: it ends with “Created with kardoo.me” and stays online for 1 year.',
+      'Free: it ends with “Created with kardoo.me” and stays online for 3 months.',
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Publish and get QR' }));

@@ -23,7 +23,7 @@ Everything is re-exported from `packages/shared-types/src/index.ts`. A new file 
 | `packages/shared-types/src/media.ts`     | `MediaKindSchema`, `MediaUploadResponseSchema`, `MEDIA_LIMITS`                                                                                                                                                                                                                                                                                  |
 | `packages/shared-types/src/payments.ts`  | `CheckoutSessionRequestSchema`, `CheckoutSessionResponseSchema`, `PriceSchema`, `PricesResponseSchema`, `PaymentConfirmationSchema`                                                                                                                                                                                                             |
 | `packages/shared-types/src/errors.ts`    | `ErrorCodeSchema`, `PremiumRequiredDetailsSchema`, `GiftLockedDetailsSchema`, `ApiErrorSchema`                                                                                                                                                                                                                                                  |
-| `packages/shared-types/src/lifecycle.ts` | `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_YEARS`, `EDIT_GRACE_HOURS`, `ANNIVERSARY_YEARS`, `addYears`, `draftExpiry`, `freeGiftExpiry`, `editableUntil`                                                                                                                                                                                                  |
+| `packages/shared-types/src/lifecycle.ts` | `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_MONTHS`, `EDIT_GRACE_HOURS`, `ANNIVERSARY_YEARS`, `addYears`, `addMonths`, `draftExpiry`, `freeGiftExpiry`, `editableUntil`                                                                                                                                                                                    |
 | `packages/shared-types/src/health.ts`    | `HealthResponseSchema`                                                                                                                                                                                                                                                                                                                          |
 
 Tests: `packages/shared-types/src/gifts.test.ts` (card payloads, slugs, lifecycle dates) and
@@ -84,7 +84,7 @@ exists in Node and in browsers; the package declares it locally because it loads
 
 ## Lifecycle periods
 
-`packages/shared-types/src/lifecycle.ts` holds `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_YEARS`,
+`packages/shared-types/src/lifecycle.ts` holds `DRAFT_TTL_DAYS`, `FREE_GIFT_TTL_MONTHS`,
 `EDIT_GRACE_HOURS`, `ANNIVERSARY_YEARS` and the date helpers `draftExpiry`, `freeGiftExpiry`,
 `editableUntil`, `addYears`. The API computes with them and the web shows them; never repeat a period in
 code or in a message.
