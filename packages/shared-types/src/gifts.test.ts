@@ -12,7 +12,7 @@ import {
   CodeSchema,
   CUSTOM_CODE_LENGTH,
   customLink,
-  CustomSlugSchema,
+  CustomNameSchema,
   GIFT_CODE_LENGTH,
   GiftLinkSchema,
   parseLink,
@@ -61,23 +61,20 @@ describe('slugs', () => {
     expect(slugify('🎁')).toBe('');
   });
 
-  it('accepts a custom link: a code, then the name', () => {
-    expect(CustomSlugSchema.safeParse('7k2m/for/te-quiero-ana').success).toBe(true);
-    expect(CustomSlugSchema.safeParse('x9k2bd7m/for/ana-2026').success).toBe(true);
+  it('reads a custom link: a code, then the name', () => {
     expect(parseLink('7k2m/for/ana-luis')).toEqual({ code: '7k2m', name: 'ana-luis' });
+    expect(parseLink('x9k2bd7m/for/ana-2026')).toEqual({ code: 'x9k2bd7m', name: 'ana-2026' });
     expect(customLink('7k2m', 'ana-luis')).toBe('7k2m/for/ana-luis');
   });
 
   it('refuses a custom link with a bad name', () => {
     for (const name of ['ab', 'Hello', 'a--b', '-abc', 'abc-', 'con espacio', 'a'.repeat(41)]) {
-      expect(CustomSlugSchema.safeParse(`7k2m/for/${name}`).success, name).toBe(false);
+      expect(parseLink(`7k2m/for/${name}`), name).toBeNull();
     }
   });
 
   it('refuses a custom link without a real code in front', () => {
     for (const bad of [
-      'ana-luis', // no code at all
-      'x9k2bd7m', // a generated link is not a custom one
       'luis/for/ana', // a word: no digit
       'mama/for/te-quiero',
       '7k2/for/ana-luis', // too short
@@ -86,13 +83,28 @@ describe('slugs', () => {
       '7k2m/ana-luis',
       '7k2m/for/ana/luis',
     ]) {
-      expect(CustomSlugSchema.safeParse(bad).success, bad).toBe(false);
+      expect(parseLink(bad), bad).toBeNull();
     }
   });
 
-  it('refuses a reserved name, whatever its code', () => {
-    for (const name of ['create', 'api', 'remember-me']) {
-      expect(CustomSlugSchema.safeParse(`7k2m/for/${name}`).success, name).toBe(false);
+  it('lets a creator choose a name, and only a name, for a custom link', () => {
+    for (const name of ['ana-luis', 'te-quiero-ana', 'ana-2026', 'abc']) {
+      expect(CustomNameSchema.safeParse(name).success, name).toBe(true);
+    }
+    for (const bad of [
+      'ab',
+      'Ana Luis',
+      'a--b',
+      'a'.repeat(41),
+      // Reserved words.
+      'create',
+      'api',
+      'remember-me',
+      // A whole link: the code is never the creator's to choose.
+      '7k2m/for/ana-luis',
+      '2222/for/ana',
+    ]) {
+      expect(CustomNameSchema.safeParse(bad).success, bad).toBe(false);
     }
   });
 
@@ -129,7 +141,7 @@ describe('slugs', () => {
       expect(code).toHaveLength(CUSTOM_CODE_LENGTH);
       expect(code).toMatch(/[0-9]/);
       expect(CodeSchema.safeParse(code).success, code).toBe(true);
-      expect(CustomSlugSchema.safeParse(customLink(code, 'laura')).success).toBe(true);
+      expect(parseLink(customLink(code, 'laura'))).toEqual({ code, name: 'laura' });
     }
     expect(new Set(codes).size).toBeGreaterThan(450);
     expect(randomCode()).toHaveLength(GIFT_CODE_LENGTH);

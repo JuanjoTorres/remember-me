@@ -14,7 +14,6 @@ vi.mock('@/features/checkout/api', () => ({
     premium: { amount: 499, currency: 'eur' },
     customSlug: { amount: 199, currency: 'eur' },
   }),
-  checkSlug: vi.fn(),
   createCheckoutSession: vi.fn(),
 }));
 vi.mock('@/features/gift-creator/api');

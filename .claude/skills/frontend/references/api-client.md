@@ -95,7 +95,6 @@ gift and the edit token, which is returned only that once.
 | Function                | Endpoint                          | Auth  |
 | ----------------------- | --------------------------------- | ----- |
 | `getPrices`             | `GET /payments/prices`            | none  |
-| `checkSlug`             | `GET /gifts/check-slug`           | none  |
 | `createCheckoutSession` | `POST /payments/checkout-session` | grant |
 | `confirmPayment`        | `POST /payments/confirm`          | grant |
 

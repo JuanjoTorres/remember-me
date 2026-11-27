@@ -32,10 +32,8 @@ describe('rate limits', () => {
     const refused = await request(app.getHttpServer()).post('/gifts').send({});
     expect(refused.body.code).toBe('RATE_LIMITED');
     expect(refused.headers['retry-after-gift-creation']).toBeDefined();
-    await request(app.getHttpServer())
-      .get('/gifts/check-slug')
-      .query({ slug: 'still-works' })
-      .expect(200);
+    // The rest of the API still answers this client: no gift behind this link, but no refusal.
+    await request(app.getHttpServer()).get('/public/gifts/x9k2bd7m').expect(404);
   });
 
   it('applies the general limit per client', async () => {

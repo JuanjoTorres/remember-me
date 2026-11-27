@@ -3,17 +3,11 @@ import type {
   CheckoutSessionResponse,
   PaymentConfirmation,
   PricesResponse,
-  SlugAvailability,
 } from '@remember-me/shared-types';
 import { apiJson } from '@/features/shared/api/client';
 
 export function getPrices(): Promise<PricesResponse> {
   return apiJson('/payments/prices');
-}
-
-/** Whether a custom link is free; for a taken one the answer carries free alternatives. */
-export function checkSlug(slug: string, signal?: AbortSignal): Promise<SlugAvailability> {
-  return apiJson(`/gifts/check-slug?slug=${encodeURIComponent(slug)}`, { signal });
 }
 
 export function createCheckoutSession(

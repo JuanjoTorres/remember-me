@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GiftEditorView } from '@remember-me/shared-types';
 import { giftView, renderApp } from '../../../test/render';
-import { ApiClientError } from '../shared/api/client';
 import * as api from './api';
 import { PremiumUpgradeSheet } from './PremiumUpgradeSheet';
 import type { UpgradeReason } from './upgrade-triggers';
@@ -32,9 +31,6 @@ function open(
 }
 
 const nameInput = () => screen.getByRole('textbox', { name: 'Custom link' });
-/** The code the field put in front of the name, read from the address it shows. */
-const codeShown = () =>
-  /^kardoo\.me\/([a-z0-9]+)\/for\//.exec(screen.getByTestId('slug-preview').textContent ?? '')![1]!;
 /** Types the name of a custom link. */
 async function typeName(name: string) {
   await userEvent.clear(nameInput());
@@ -47,7 +43,6 @@ describe('PremiumUpgradeSheet', () => {
       premium: { amount: 499, currency: 'eur' },
       customSlug: { amount: 199, currency: 'eur' },
     });
-    vi.mocked(api.checkSlug).mockImplementation(async (slug) => ({ slug, available: true }));
     vi.mocked(api.createCheckoutSession).mockResolvedValue({
       orderId: '00000000-0000-4000-8000-000000000001',
       checkoutUrl: 'https://checkout.stripe.test/c/pay/cs_test_1',
@@ -137,139 +132,55 @@ describe('PremiumUpgradeSheet', () => {
     ).toBeInTheDocument();
   });
 
-  it('puts a random code of four characters in front of the custom link', async () => {
+  it('asks only for the name of the custom link and shows where the code will go', async () => {
     open('MAX_CARDS');
     await screen.findByRole('button', { name: 'Pay €4.99' });
     await userEvent.click(screen.getByRole('checkbox'));
 
-    // Pre-filled from the recipient's name.
+    // Pre-filled from the recipient's name; the code is not the creator's to choose or to see yet.
     expect(nameInput()).toHaveValue('ana');
-    expect(screen.getByTestId('slug-preview')).toHaveTextContent(
-      /^kardoo\.me\/[a-z0-9]{4}\/for\/ana$/,
-    );
-    expect(codeShown()).toMatch(/[0-9]/);
-    // The name is all the creator chooses.
+    expect(screen.getByTestId('slug-preview')).toHaveTextContent('kardoo.me/····/for/ana');
     expect(within(screen.getByRole('dialog')).getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.getByText(/A code of 4 characters goes in front/)).toBeInTheDocument();
   });
 
-  it('previews the custom link live and adds it to the total', async () => {
+  it('previews the custom link live, adds it to the total and sends only the name', async () => {
     const redirect = open('MAX_CARDS');
     await screen.findByRole('button', { name: 'Pay €4.99' });
     await userEvent.click(screen.getByRole('checkbox'));
     await typeName('Te quiero, Ana');
 
     expect(nameInput()).toHaveValue('te-quiero-ana');
-    const code = codeShown();
     expect(screen.getByTestId('slug-preview')).toHaveTextContent(
-      `kardoo.me/${code}/for/te-quiero-ana`,
+      'kardoo.me/····/for/te-quiero-ana',
     );
-    expect(await screen.findByText('Available')).toBeInTheDocument();
-    expect(api.checkSlug).toHaveBeenLastCalledWith(`${code}/for/te-quiero-ana`, expect.anything());
+    expect(screen.getByRole('status')).toHaveTextContent('This name can be yours');
 
     await userEvent.click(screen.getByRole('button', { name: 'Pay €6.98' }));
     await waitFor(() => expect(redirect).toHaveBeenCalled());
     expect(api.createCheckoutSession).toHaveBeenCalledWith(
       'grant-token',
-      expect.objectContaining({
-        includeCustomSlug: true,
-        customSlug: `${code}/for/te-quiero-ana`,
-      }),
+      expect.objectContaining({ includeCustomSlug: true, customSlug: 'te-quiero-ana' }),
     );
   });
 
-  it('does not accept a name that is too short or reserved, and does not ask about it', async () => {
+  it('does not let the creator pay for a name that is missing, too short or reserved', async () => {
     open('MAX_CARDS');
     await screen.findByRole('button', { name: 'Pay €4.99' });
     await userEvent.click(screen.getByRole('checkbox'));
-    await screen.findByText('Available');
-    const checks = vi.mocked(api.checkSlug).mock.calls.length;
+    expect(screen.getByRole('button', { name: 'Pay €6.98' })).toBeEnabled();
 
+    await userEvent.clear(nameInput());
+    expect(screen.getByRole('button', { name: 'Pay €6.98' })).toBeDisabled();
     for (const name of ['ab', 'create']) {
       await typeName(name);
       expect(screen.getByText(/3 to 40/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Pay €6.98' })).toBeDisabled();
     }
-    expect(api.checkSlug).toHaveBeenCalledTimes(checks);
 
     // Unticking the extra makes the plain upgrade payable again.
     await userEvent.click(screen.getByRole('checkbox'));
     expect(screen.getByRole('button', { name: 'Pay €4.99' })).toBeEnabled();
-  });
-
-  it('draws another code by itself when that very link is taken', async () => {
-    vi.mocked(api.checkSlug)
-      .mockImplementationOnce(async (slug) => ({ slug, available: false, reason: 'TAKEN' }))
-      .mockImplementationOnce(async (slug) => ({ slug, available: false, reason: 'TAKEN' }));
-    const redirect = open('MAX_CARDS');
-    await screen.findByRole('button', { name: 'Pay €4.99' });
-    await userEvent.click(screen.getByRole('checkbox'));
-
-    expect(await screen.findByText('Available')).toBeInTheDocument();
-    const asked = vi.mocked(api.checkSlug).mock.calls.map(([slug]) => slug);
-    expect(asked).toHaveLength(3);
-    expect(new Set(asked).size).toBe(3);
-    for (const slug of asked) expect(slug).toMatch(/^[a-z0-9]{4}\/for\/ana$/);
-    // The address shown and paid for is the free one.
-    expect(`${codeShown()}/for/ana`).toBe(asked[2]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Pay €6.98' }));
-    await waitFor(() => expect(redirect).toHaveBeenCalled());
-    expect(api.createCheckoutSession).toHaveBeenCalledWith(
-      'grant-token',
-      expect.objectContaining({ customSlug: asked[2] }),
-    );
-  });
-
-  it('gives up on a name that stays taken, and does not let the creator pay for it', async () => {
-    vi.mocked(api.checkSlug).mockImplementation(async (slug) => ({
-      slug,
-      available: false,
-      reason: 'TAKEN',
-    }));
-    open('MAX_CARDS');
-    await screen.findByRole('button', { name: 'Pay €4.99' });
-    await userEvent.click(screen.getByRole('checkbox'));
-
-    expect(await screen.findByText(/Not available/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Pay €6.98' })).toBeDisabled();
-    // The first code and three more, then it stops asking.
-    expect(api.checkSlug).toHaveBeenCalledTimes(4);
-  });
-
-  it('pays without checking the link a second time', async () => {
-    const redirect = open('MAX_CARDS');
-    await screen.findByRole('button', { name: 'Pay €4.99' });
-    await userEvent.click(screen.getByRole('checkbox'));
-    await typeName('laura');
-    expect(await screen.findByText('Available')).toBeInTheDocument();
-    const checks = vi.mocked(api.checkSlug).mock.calls.length;
-
-    await userEvent.click(screen.getByRole('button', { name: 'Pay €6.98' }));
-    await vi.waitFor(() => expect(redirect).toHaveBeenCalled());
-    expect(api.checkSlug).toHaveBeenCalledTimes(checks);
-    expect(api.createCheckoutSession).toHaveBeenCalledWith(
-      'grant-token',
-      expect.objectContaining({ includeCustomSlug: true, customSlug: `${codeShown()}/for/laura` }),
-    );
-  });
-
-  it('still lets a creator who ran out of checks pay for the link', async () => {
-    vi.mocked(api.checkSlug).mockRejectedValue(
-      new ApiClientError(429, 'RATE_LIMITED', 'slow down'),
-    );
-    const redirect = open('MAX_CARDS');
-    await screen.findByRole('button', { name: 'Pay €4.99' });
-    await userEvent.click(screen.getByRole('checkbox'));
-    await typeName('laura');
-
-    const pay = screen.getByRole('button', { name: 'Pay €6.98' });
-    await vi.waitFor(() => expect(pay).toBeEnabled());
-    await userEvent.click(pay);
-    await vi.waitFor(() => expect(redirect).toHaveBeenCalled());
-    expect(api.createCheckoutSession).toHaveBeenCalledWith(
-      'grant-token',
-      expect.objectContaining({ customSlug: `${codeShown()}/for/laura` }),
-    );
   });
 
   it('reports a failed checkout and does not redirect', async () => {

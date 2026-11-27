@@ -59,11 +59,11 @@ whether it must be paid for. A draft that is never published is deleted 7 days a
 Order bump `CUSTOM_SLUG` (e.g. +1.99 €): the creator chooses the name in the link instead of the
 generated one. Only available together with PREMIUM in the same checkout.
 
-Every link ends with a code: 8 random characters for generated links (`laura-x9k2bd7m`), and at least 4,
-random or typed by the creator, for custom ones (`laura-x9k2`). It avoids collisions and keeps a gift from
-being found by trying names. Trying links is also throttled per client: a handful of links that lead
-nowhere, and every lookup of that client is refused for ten minutes. `GET /gifts/check-slug` reports availability and proposes three free alternatives for a
-taken link.
+Every link starts with a random code that always has a digit: 8 characters and nothing else for
+generated links (`x9k2bd7m`), and 4 characters, `/for/` and the name the creator chose for custom ones
+(`7k2m/for/laura`). The API draws the code; the creator only chooses the name. It keeps a gift from being
+found by trying names. Trying links is also throttled per client: a handful of links that lead nowhere,
+and every lookup of that client is refused for ten minutes. No endpoint tells whether a link exists.
 
 ## Non-goals for v1
 
@@ -110,10 +110,9 @@ taken link.
   - `GET /payments/prices`: amounts and currency of the two prices, read from Stripe and cached.
 - `gifts` subscribes to `PaymentSucceededEvent`: sets `isPremium = true`, removes the expiry, keeps the
   buyer's email, applies `customSlug`, publishes the gift. The handler is idempotent.
-- **Custom slug availability:** `payments` cannot ask `gifts` directly. The web checks availability with
-  `GET /gifts/check-slug` before checkout. If the slug was taken in the meantime, `gifts` keeps the
-  generated slug, still upgrades the gift and flags `customSlugPending` so the creator can pick another one
-  for free from the editor.
+- **Custom link:** the checkout carries only the name. `gifts` draws a free code for it when it applies
+  the payment, so a name is never taken; a name that cannot be used keeps the upgrade and flags
+  `customSlugPending` so the creator can choose another one for free from the editor.
 - `media`: image → WebP with sharp; audio M4A/MP3 stored as is; size and type limits; upload to
   S3-compatible storage. `qr`: PNG/SVG for the gift URL built from the public web origin.
 - Env validated with Zod at startup in `src/config/env.ts` of each app.

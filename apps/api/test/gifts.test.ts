@@ -5,7 +5,6 @@ import {
   CreateGiftResponseSchema,
   DRAFT_TTL_DAYS,
   EDIT_GRACE_HOURS,
-  customLink,
   freeGiftExpiry,
   GIFT_CODE_LENGTH,
   type GiftEditorView,
@@ -16,7 +15,6 @@ import {
   PLAN_CAPABILITIES,
   PremiumRequiredDetailsSchema,
   PublicGiftSchema,
-  SlugAvailabilitySchema,
 } from '@remember-me/shared-types';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -25,7 +23,15 @@ import { GiftDeletedEvent, PaymentSucceededEvent } from '../src/shared/events/co
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { createTestApp } from './create-test-app.js';
-import { createGift, editor, freeCustomLink, makePremium, mediaUrl, photoCard } from './helpers.js';
+import {
+  createGift,
+  customLinkOf,
+  editor,
+  freeName,
+  makePremium,
+  mediaUrl,
+  photoCard,
+} from './helpers.js';
 
 describe('gifts', () => {
   let app: INestApplication;
@@ -77,7 +83,7 @@ describe('gifts', () => {
           client.update({ recipientName: 'x' }),
           client.addCard(photoCard()),
           client.publish(),
-          client.changeSlug('7k2m/for/some-slug'),
+          client.changeSlug('some-slug'),
           client.reorder([gift.id]),
           client.updateCard(gift.id, photoCard()),
           client.removeCard(gift.id),
@@ -114,13 +120,8 @@ describe('gifts', () => {
   const payFor = (giftId: string, customSlug: string | null, orderId = `order-${randomUUID()}`) =>
     app.get(EventBus).publish(PaymentSucceededEvent, { orderId, giftId, customSlug });
 
-  /** A custom link that a published gift already has. */
-  async function takenCustomLink(): Promise<string> {
-    const { gift } = await publishedGift();
-    const link = freeCustomLink('ocupado');
-    await payFor(gift.id, link);
-    return link;
-  }
+  const slugOf = async (client: ReturnType<typeof editor>) =>
+    ((await client.get().expect(200)).body as GiftEditorView).slug;
 
   const publishedHoursAgo = (giftId: string, hours: number) =>
     app.get(PrismaService).gift.update({
@@ -504,12 +505,15 @@ describe('gifts', () => {
       expect(view).toMatchObject({ plan: 'PREMIUM', status: 'DRAFT' });
     });
 
-    it('applies the custom link, and keeps it when the gift is published later', async () => {
+    it('gives the gift a custom link with the name bought and a code of its own, kept on publication', async () => {
       const { gift, editToken } = await createGift(app);
       const client = editor(app, gift.id, editToken);
-      const slug = freeCustomLink();
-      await pay(gift.id, slug);
-      expect(((await client.get()).body as GiftEditorView).slug).toBe(slug);
+      const name = freeName();
+      await pay(gift.id, name);
+      const slug = await slugOf(client);
+      expect(slug).toMatch(customLinkOf(name));
+      // The code is a real one: random characters with a digit, not something the buyer sent.
+      expect(GiftLinkSchema.safeParse(slug).success).toBe(true);
 
       await client.addCard(photoCard()).expect(201);
       await client.update({ recipientName: 'Ana', reveal: { headline: 'Surprise' } }).expect(200);
@@ -517,23 +521,50 @@ describe('gifts', () => {
       await http().get(`/public/gifts/${slug}`).expect(200);
     });
 
-    it('still upgrades when the custom link was taken, and lets the creator pick another once', async () => {
-      const taken = await takenCustomLink();
-      const { gift, client } = await publishedGift();
-      const orderId = `order-${randomUUID()}`;
-
-      await pay(gift.id, taken, orderId);
-      const view = (await client.get()).body as GiftEditorView;
-      expect(view).toMatchObject({ plan: 'PREMIUM', slug: gift.slug, customSlugPending: true });
-
-      const chosen = freeCustomLink('second-choice');
-      await client.changeSlug(chosen).expect(200);
-
-      // The same payment delivered again must not reopen the choice or move the gift.
-      await pay(gift.id, taken, orderId);
-      expect((await client.get()).body).toMatchObject({ slug: chosen, customSlugPending: false });
-      await client.changeSlug(freeCustomLink('third-choice')).expect(402);
+    it('lets two gifts buy the same name: each gets its own code', async () => {
+      const [first, second] = [await publishedGift(), await publishedGift()];
+      const name = freeName('la-misma');
+      await pay(first.gift.id, name);
+      await pay(second.gift.id, name);
+      const links = [await slugOf(first.client), await slugOf(second.client)];
+      for (const link of links) expect(link).toMatch(customLinkOf(name));
+      expect(links[0]).not.toBe(links[1]);
+      expect((await first.client.get()).body.customSlugPending).toBe(false);
+      expect((await second.client.get()).body.customSlugPending).toBe(false);
     });
+
+    it('does not move a gift that buys again the name its link already has', async () => {
+      const { gift, client } = await publishedGift();
+      const name = freeName('ya-es-mio');
+      await pay(gift.id, name);
+      const slug = await slugOf(client);
+      await pay(gift.id, name);
+      expect(await slugOf(client)).toBe(slug);
+    });
+
+    it.each(['create', 'ab', 'Ana Luis', '7k2m/for/ana-luis', '2222/for/ana'])(
+      'keeps the upgrade when the name "%s" cannot be used, and lets the creator choose another once',
+      async (unusable) => {
+        const { gift, client } = await publishedGift();
+        const orderId = `order-${randomUUID()}`;
+        await pay(gift.id, unusable, orderId);
+        expect((await client.get()).body).toMatchObject({
+          plan: 'PREMIUM',
+          slug: gift.slug,
+          customSlugPending: true,
+        });
+
+        const name = freeName('second-choice');
+        await client.changeSlug(name).expect(200);
+        const chosen = await slugOf(client);
+        expect(chosen).toMatch(customLinkOf(name));
+
+        // The same payment delivered again must not reopen the choice or move the gift.
+        await pay(gift.id, unusable, orderId);
+        expect((await client.get()).body).toMatchObject({ slug: chosen, customSlugPending: false });
+        await client.changeSlug(freeName('third-choice')).expect(402);
+      },
+    );
 
     it('keeps the email of the buyer, and does not lose it when the event comes without one', async () => {
       const { gift } = await publishedGift();
@@ -554,10 +585,13 @@ describe('gifts', () => {
 
     it('ignores an old order that is delivered again after a newer one', async () => {
       const { gift, client } = await publishedGift();
-      const [first, second] = [freeCustomLink('first'), freeCustomLink('second')];
-      await pay(gift.id, first, 'order-a-' + gift.id);
-      await pay(gift.id, second, 'order-b-' + gift.id);
-      await pay(gift.id, first, 'order-a-' + gift.id);
+      const [firstName, secondName] = [freeName('first'), freeName('second')];
+      await pay(gift.id, firstName, 'order-a-' + gift.id);
+      const first = await slugOf(client);
+      await pay(gift.id, secondName, 'order-b-' + gift.id);
+      const second = await slugOf(client);
+      await pay(gift.id, firstName, 'order-a-' + gift.id);
+      expect(second).toMatch(customLinkOf(secondName));
       expect((await client.get()).body).toMatchObject({ slug: second, customSlugPending: false });
       // Every link the published gift ever had still opens it.
       for (const slug of [gift.slug, first, second])
@@ -567,95 +601,52 @@ describe('gifts', () => {
     it('is idempotent for a repeated order and ignores a deleted gift', async () => {
       const { gift, client } = await publishedGift();
       const orderId = `order-${randomUUID()}`;
-      const slug = freeCustomLink('mi-regalo');
-      await pay(gift.id, slug, orderId);
-      await pay(gift.id, slug, orderId);
+      const name = freeName('mi-regalo');
+      await pay(gift.id, name, orderId);
+      const slug = await slugOf(client);
+      await pay(gift.id, name, orderId);
       expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', slug });
 
       await client.remove().expect(204);
       await expect(pay(gift.id, null)).resolves.toBeUndefined();
     });
-
-    it.each(['create', '7k2m/for/create', 'luis/for/ana', 'ana-luis-x9k2'])(
-      'rejects the invalid custom link %s but keeps the upgrade',
-      async (invalid) => {
-        const { gift, client } = await publishedGift();
-        await pay(gift.id, invalid);
-        expect((await client.get()).body).toMatchObject({
-          plan: 'PREMIUM',
-          slug: gift.slug,
-          customSlugPending: true,
-        });
-      },
-    );
   });
 
   describe('slugs', () => {
-    const check = async (slug: string) =>
-      SlugAvailabilitySchema.parse(
-        (await http().get('/gifts/check-slug').query({ slug }).expect(200)).body,
-      );
-
-    it('reports availability', async () => {
-      const free = freeCustomLink('te-quiero-ana');
-      expect(await check(free)).toEqual({ slug: free, available: true });
-      expect(await check('7k2m/for/create')).toMatchObject({
-        available: false,
-        reason: 'RESERVED',
-      });
-      expect(await check('Not Valid')).toMatchObject({ available: false, reason: 'INVALID' });
-      const taken = await takenCustomLink();
-      expect(await check(taken)).toEqual({ slug: taken, available: false, reason: 'TAKEN' });
-    });
-
-    it('refuses a link that is not a code followed by a name', async () => {
-      for (const slug of [
-        'laura',
-        'te-quiero-ana-x9k2',
-        'x9k2bd7m',
-        'luis/for/ana',
-        '7k2/for/ana-luis',
-        '7k2m/for/an',
-      ]) {
-        expect(await check(slug)).toEqual({ slug, available: false, reason: 'INVALID' });
-      }
-    });
-
-    it('lets the same name be taken again behind another code', async () => {
-      const taken = await takenCustomLink();
-      const name = taken.split('/for/')[1]!;
-      const other = customLink(taken.startsWith('7k2m') ? '8k2m' : '7k2m', name);
-      expect(await check(other)).toEqual({ slug: other, available: true });
-    });
-
     it('gives every gift a random code from the start, also a draft', async () => {
       const { gift } = await createGift(app);
       expect(GiftLinkSchema.safeParse(gift.slug).success).toBe(true);
       expect(gift.slug).toHaveLength(GIFT_CODE_LENGTH);
     });
 
-    it('only lets a gift change its link when a paid custom link is pending', async () => {
+    it('has no way to ask which links exist', async () => {
+      await http().get('/gifts/check-slug').query({ slug: '7k2m/for/ana-luis' }).expect(400);
+    });
+
+    it('only lets a gift choose a name for its link when a paid custom link is pending', async () => {
       const { gift, client } = await publishedGift();
-      const refused = await client.changeSlug(freeCustomLink('my-own-link')).expect(402);
+      const refused = await client.changeSlug(freeName('my-own-link')).expect(402);
       expect(refused.body.details).toEqual({ capability: 'CUSTOM_SLUG' });
 
-      const taken = await takenCustomLink();
       await app
         .get(PrismaService)
         .gift.update({ where: { id: gift.id }, data: { customSlugPending: true } });
-      expect((await client.changeSlug(taken).expect(409)).body.code).toBe('SLUG_TAKEN');
-      await client.changeSlug('7k2m/for/create').expect(400);
-      // A custom link needs its code in front, and a code is never a word.
-      await client.changeSlug('my-own').expect(400);
-      await client.changeSlug('luis/for/my-own').expect(400);
+      await client.changeSlug('create').expect(400);
+      await client.changeSlug('my').expect(400);
+      // Only the name is the creator's to choose: a whole link, with its code, is refused.
+      await client.changeSlug('7k2m/for/my-own').expect(400);
+      await client.changeSlug('2222/for/my-own').expect(400);
 
-      const chosen = freeCustomLink('my-own-link');
-      const changed = (await client.changeSlug(chosen).expect(200)).body as GiftEditorView;
-      expect(changed).toMatchObject({ slug: chosen, customSlugPending: false });
-      await http().get(`/public/gifts/${chosen}`).expect(200);
-      await client.changeSlug(freeCustomLink('another-link')).expect(402);
+      const name = freeName('my-own-link');
+      const changed = (await client.changeSlug(name).expect(200)).body as GiftEditorView;
+      expect(changed.slug).toMatch(customLinkOf(name));
+      expect(changed.customSlugPending).toBe(false);
+      await http().get(`/public/gifts/${changed.slug}`).expect(200);
+      await client.changeSlug(freeName('another-link')).expect(402);
       // The link it was published with still works and stays reserved.
-      expect((await http().get(`/public/gifts/${gift.slug}`).expect(200)).body.slug).toBe(chosen);
+      expect((await http().get(`/public/gifts/${gift.slug}`).expect(200)).body.slug).toBe(
+        changed.slug,
+      );
     });
   });
 

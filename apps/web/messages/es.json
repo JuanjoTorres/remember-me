@@ -123,8 +123,9 @@
     "editLinkText": "No hay cuenta. Este enlace privado es la única forma de editar el regalo desde otro dispositivo: guárdalo en un lugar seguro y no lo compartas.",
     "copyEditLink": "Copiar enlace de edición",
     "pendingSlugTitle": "Elige otro enlace",
-    "pendingSlugText": "El enlace personalizado que pagaste se ocupó justo antes de tu pago. Elige otro sin coste adicional.",
+    "pendingSlugText": "No hemos podido usar el nombre que elegiste para tu enlace personalizado. Elige otro sin coste adicional.",
     "pendingSlugSave": "Usar este enlace",
+    "pendingSlugError": "No se ha podido guardar ese nombre. Inténtalo de nuevo.",
     "draftNote": "Pruébalo todo gratis: solo pagas si publicas con funciones PRO. Un borrador sin publicar se elimina el {date}.",
     "publishedGraceText": "Comparte el enlace o imprime el QR. Puedes corregir erratas y cambiar fotos hasta el {date}; después el regalo se queda como está.",
     "publishedLockedText": "Este regalo ya se ha entregado y no se puede editar. Su enlace y su QR siguen funcionando.",
@@ -171,9 +172,7 @@
     "slugPlaceholder": "te-quiero-ana",
     "slugHint": "Letras minúsculas, números y guiones.",
     "slugInvalid": "Usa de {min} a {max} letras minúsculas, números o guiones.",
-    "slugChecking": "Comprobando…",
-    "slugAvailable": "Disponible",
-    "slugTaken": "No está disponible. Prueba con otro nombre.",
+    "slugValid": "Perfecto. Este nombre puede ser tuyo.",
     "pay": "Pagar {price}",
     "payLoading": "Cargando precio…",
     "payNote": "Un único pago por este regalo. Sin suscripción. Tarjeta, Apple Pay, Google Pay y Bizum donde esté disponible.",
@@ -191,7 +190,6 @@
     "failedTitle": "No hemos podido comprobar tu pago",
     "failedText": "Si has pagado, tu regalo se mejorará en cuanto se confirme el pago. Recarga esta página en un momento.",
     "retry": "Recargar",
-    "slugUnchecked": "No hemos podido comprobar este enlace ahora. Puedes pagar igualmente: si resulta estar ocupado, elegirás otro después, sin coste.",
     "proUsedLabel": "Funciones PRO de este regalo",
     "proFeature": {
       "EXTRA_CARDS": "Más de {max} tarjetas",
@@ -201,7 +199,7 @@
     },
     "featureForever": "Un recuerdo eterno: no caduca nunca",
     "featureForeverHint": "Los regalos gratuitos se eliminan {months, plural, one {# mes} other {# meses}} después de publicarse.",
-    "slugCodeHint": "El código de delante lo ponemos nosotros. Evita que alguien encuentre el regalo probando nombres."
+    "slugCodeHint": "Delante va un código de {length} caracteres; lo verás en cuanto pagues. Evita que alguien encuentre el regalo probando nombres."
   },
   "experience": {
     "metaTitle": "Un regalo para {name}",

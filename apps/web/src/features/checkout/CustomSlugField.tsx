@@ -2,9 +2,7 @@
 
 import {
   CUSTOM_CODE_LENGTH,
-  customLink,
-  CustomSlugSchema,
-  randomCode,
+  CustomNameSchema,
   SLUG_MAX_LENGTH,
   SLUG_MIN_LENGTH,
   slugify,
@@ -12,21 +10,20 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { TextInput } from '@/features/shared/ui/Field';
-import { checkSlug } from './api';
 
-/** `unchecked`: the availability request failed or was refused; the link can still be paid for. */
-export type SlugState = 'empty' | 'invalid' | 'checking' | 'available' | 'taken' | 'unchecked';
+/** What is known about the name typed for a custom link. */
+export type SlugState = 'empty' | 'invalid' | 'valid';
 
-/** How many other codes are tried, without asking the creator, when a link turns out taken. */
-const CODE_RETRIES = 3;
+/** Stands in the address for the code that the server draws once the link is paid for. */
+const CODE_PLACEHOLDER = '·'.repeat(CUSTOM_CODE_LENGTH);
 
 interface CustomSlugFieldProps {
-  /** Host shown in front of the slug, e.g. "kardoo.me". */
+  /** Host shown in front of the link, e.g. "kardoo.me". */
   host: string;
   /** Name the field starts with, e.g. taken from the recipient. */
   initialName?: string;
-  /** Called with the whole link as it is stored ("7k2m/for/ana-luis") and what is known about it. */
-  onChange: (slug: string, state: SlugState) => void;
+  /** Called with the name ("ana-luis") and whether it can be used. */
+  onChange: (name: string, state: SlugState) => void;
 }
 
 /** Keeps what the creator types in slug form while they type; trailing hyphens are kept for now. */
@@ -37,69 +34,37 @@ export function toSlugInput(raw: string): string {
 }
 
 /**
- * Custom link input. The creator chooses the name; a short random code goes in front of it, so
- * that nobody finds a gift by trying common names. Shows the final address and checks it; if that
- * exact link is taken, which is rare, another code is drawn without asking.
+ * Custom link input. The creator chooses the name and nothing else: the code in front of it is
+ * drawn by the server when the link is given to the gift, so that nobody picks an easy one and
+ * nobody finds a gift by trying names. Any valid name can be had, so there is nothing to check
+ * with the server; the address is shown with the code still to come.
  */
 export function CustomSlugField({ host, initialName = '', onChange }: CustomSlugFieldProps) {
   const t = useTranslations('checkout');
   const [name, setName] = useState(() => toSlugInput(initialName));
-  const [code, setCode] = useState(() => randomCode(CUSTOM_CODE_LENGTH));
-  const [retries, setRetries] = useState(0);
-  const [state, setState] = useState<SlugState>('empty');
-  const base = slugify(name);
-  const candidate = base === '' ? '' : customLink(code, base);
+  const candidate = slugify(name);
+  const state: SlugState =
+    candidate === ''
+      ? 'empty'
+      : CustomNameSchema.safeParse(candidate).success
+        ? 'valid'
+        : 'invalid';
 
   useEffect(() => {
-    const update = (next: SlugState) => {
-      setState(next);
-      onChange(candidate, next);
-    };
-    if (candidate === '') return update('empty');
-    if (!CustomSlugSchema.safeParse(candidate).success) return update('invalid');
-
-    update('checking');
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => {
-        checkSlug(candidate, controller.signal)
-          .then((result) => {
-            if (result.available) return update('available');
-            // Someone has this very code and name: another code makes the link free again.
-            if (result.reason === 'TAKEN' && retries < CODE_RETRIES) {
-              setRetries(retries + 1);
-              return setCode(randomCode(CUSTOM_CODE_LENGTH));
-            }
-            update(result.reason === 'TAKEN' ? 'taken' : 'invalid');
-          })
-          .catch(() => {
-            if (!controller.signal.aborted) update('unchecked');
-          });
-        // Typing waits for a pause; another code after a taken link is tried at once.
-      },
-      retries > 0 ? 0 : 350,
-    );
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-    // `onChange` is a callback from the parent; re-running on its identity would loop. `retries`
-    // only changes together with the code, which changes `candidate`.
+    onChange(candidate, state);
+    // `onChange` is a callback from the parent; re-running on its identity would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidate]);
+  }, [candidate, state]);
 
   const message: Record<SlugState, string> = {
     empty: t('slugHint'),
     invalid: t('slugInvalid', { min: SLUG_MIN_LENGTH, max: SLUG_MAX_LENGTH }),
-    checking: t('slugChecking'),
-    available: t('slugAvailable'),
-    taken: t('slugTaken'),
-    unchecked: t('slugUnchecked'),
+    valid: t('slugValid'),
   };
   const tone =
-    state === 'available'
+    state === 'valid'
       ? 'text-emerald-700'
-      : state === 'taken' || state === 'invalid'
+      : state === 'invalid'
         ? 'text-ember-deep'
         : 'text-ink-soft';
 
@@ -109,10 +74,7 @@ export function CustomSlugField({ host, initialName = '', onChange }: CustomSlug
         <span className="text-ink-soft mb-1 block text-xs font-medium">{t('slugLabel')}</span>
         <TextInput
           value={name}
-          onChange={(event) => {
-            setRetries(0);
-            setName(toSlugInput(event.target.value));
-          }}
+          onChange={(event) => setName(toSlugInput(event.target.value))}
           placeholder={t('slugPlaceholder')}
           autoCapitalize="none"
           autoCorrect="off"
@@ -126,14 +88,16 @@ export function CustomSlugField({ host, initialName = '', onChange }: CustomSlug
         data-testid="slug-preview"
       >
         <span className="text-ink-soft">
-          {host}/{code}/for/
+          {host}/{CODE_PLACEHOLDER}/for/
         </span>
-        <span className="text-ink font-semibold">{base || t('slugPlaceholder')}</span>
+        <span className="text-ink font-semibold">{candidate || t('slugPlaceholder')}</span>
       </p>
       <p className={`mt-1.5 text-sm ${tone}`} role="status">
         {message[state]}
       </p>
-      <p className="text-ink-soft mt-1 text-xs leading-relaxed">{t('slugCodeHint')}</p>
+      <p className="text-ink-soft mt-1 text-xs leading-relaxed">
+        {t('slugCodeHint', { length: CUSTOM_CODE_LENGTH })}
+      </p>
     </div>
   );
 }

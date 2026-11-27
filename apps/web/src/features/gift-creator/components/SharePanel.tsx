@@ -18,7 +18,8 @@ interface SharePanelProps {
   withGrant: <T>(call: (grant: string) => Promise<T>) => Promise<T>;
   onUpgrade: (reason: UpgradeReason) => void;
   /** Applies the paid custom link when the first choice was taken. Resolves to false if refused. */
-  onChangeSlug: (slug: string) => Promise<boolean>;
+  /** Gives the gift its custom link with this name; resolves to whether it worked. */
+  onChangeSlug: (name: string) => Promise<boolean>;
 }
 
 function saveFile(blob: Blob, name: string) {
@@ -156,6 +157,7 @@ function PendingSlug({ gift, onChangeSlug }: Pick<SharePanelProps, 'gift' | 'onC
   const [slug, setSlug] = useState('');
   const [state, setState] = useState<SlugState>('empty');
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   return (
     <div className="border-gold rounded-2xl border bg-white p-4">
@@ -171,15 +173,21 @@ function PendingSlug({ gift, onChangeSlug }: Pick<SharePanelProps, 'gift' | 'onC
       <Button
         className="mt-3"
         busy={busy}
-        disabled={state !== 'available'}
+        disabled={state !== 'valid'}
         onClick={async () => {
           setBusy(true);
-          if (!(await onChangeSlug(slug))) setState('taken');
+          const changed = await onChangeSlug(slug);
           setBusy(false);
+          setFailed(!changed);
         }}
       >
         {t('pendingSlugSave')}
       </Button>
+      {failed && (
+        <p className="text-ember-deep mt-2 text-sm" role="alert">
+          {t('pendingSlugError')}
+        </p>
+      )}
     </div>
   );
 }

@@ -30,8 +30,8 @@ export const SlugSchema = z
 /**
  * A gift's link is its only secret. Two shapes, both starting with a random code:
  * - generated: the code alone, "x9k2bd7m" (`kardoo.me/x9k2bd7m`);
- * - custom, a paid extra: a short code, then the name the creator chose, "7k2m/for/ana-luis"
- *   (`kardoo.me/7k2m/for/ana-luis`).
+ * - custom, a paid extra: a short code drawn by the API, then the name the creator chose,
+ *   "7k2m/for/ana-luis" (`kardoo.me/7k2m/for/ana-luis`).
  * The stored slug is the path of the link without its leading slash.
  */
 
@@ -106,17 +106,12 @@ export const GiftLinkSchema = z.string().refine((slug) => parseLink(slug) !== nu
 });
 
 /**
- * A custom link, as stored: a code, then the name chosen by the creator ("7k2m/for/ana-luis").
- * The code in front keeps a gift from being found by trying common names.
+ * The name a creator may choose for a custom link ("ana-luis"). It is all they choose: the code in
+ * front of it is drawn by the API when the link is given to the gift.
  */
-export const CustomSlugSchema = z
-  .string()
-  .refine((slug) => (parseLink(slug)?.name ?? null) !== null, {
-    message: 'A custom link is a code followed by /for/ and a name',
-  })
-  .refine((slug) => !RESERVED_SLUGS.includes(parseLink(slug)?.name ?? ''), {
-    message: 'This name is reserved',
-  });
+export const CustomNameSchema = SlugSchema.refine((name) => !RESERVED_SLUGS.includes(name), {
+  message: 'This name is reserved',
+});
 
 /**
  * Turns free text into slug form: "Te quiero, Ana!" -> "te-quiero-ana".
@@ -132,10 +127,3 @@ export function slugify(input: string): string {
     .slice(0, SLUG_MAX_LENGTH)
     .replace(/-+$/g, '');
 }
-
-export const SlugAvailabilitySchema = z.object({
-  slug: z.string(),
-  available: z.boolean(),
-  reason: z.enum(['INVALID', 'RESERVED', 'TAKEN']).optional(),
-});
-export type SlugAvailability = z.infer<typeof SlugAvailabilitySchema>;

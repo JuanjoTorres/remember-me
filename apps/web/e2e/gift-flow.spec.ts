@@ -98,7 +98,7 @@ test('a creator tries everything for free, previews the gift and publishes it fr
   await upgrade.getByRole('checkbox').check();
   await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('Te quiero, Sarah');
   await expect(upgrade.getByTestId('slug-preview')).toHaveText(
-    /^localhost:3000\/[a-z0-9]{4}\/for\/te-quiero-sarah$/,
+    'localhost:3000/····/for/te-quiero-sarah',
   );
   await page.keyboard.press('Escape');
   await expect(upgrade).toBeHidden();

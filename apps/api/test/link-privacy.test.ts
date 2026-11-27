@@ -12,16 +12,18 @@ import * as slugGenerator from '../src/modules/gifts/slug-generator.js';
 import { PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { createTestApp } from './create-test-app.js';
-import { createGift, editor, freeCustomLink, photoCard } from './helpers.js';
+import { createGift, customLinkOf, editor, freeName, photoCard } from './helpers.js';
 
 // The real generator, unless a test lines up what it must return next.
 vi.mock('../src/modules/gifts/slug-generator.js', async (original) => {
   const actual = await original<typeof slugGenerator>();
-  return { generateSlug: vi.fn(actual.generateSlug) };
+  return {
+    generateSlug: vi.fn(actual.generateSlug),
+    generateCustomLink: vi.fn(actual.generateCustomLink),
+  };
 });
 
 const MISS_LIMIT = 4;
-const CHECK_LIMIT = 5;
 
 describe('link privacy', () => {
   let app: INestApplication;
@@ -37,15 +39,9 @@ describe('link privacy', () => {
   };
   const open = (slug: string, from: string) =>
     request(app.getHttpServer()).get(`/public/gifts/${slug}`).set('X-Forwarded-For', from);
-  const check = (slug: string, from: string) =>
-    request(app.getHttpServer())
-      .get('/gifts/check-slug')
-      .query({ slug })
-      .set('X-Forwarded-For', from);
 
   beforeAll(async () => {
     process.env['LINK_LOOKUP_MISS_LIMIT'] = String(MISS_LIMIT);
-    process.env['SLUG_CHECK_LIMIT'] = String(CHECK_LIMIT);
     process.env['TRUST_PROXY_HOPS'] = '1';
     app = await createTestApp();
   });
@@ -84,13 +80,14 @@ describe('link privacy', () => {
     it('never give a new gift a link another gift once had: its printed QR code keeps opening that gift', async () => {
       const first = await publishedGift('Laura');
       const formerLink = first.gift.slug;
-      const custom = freeCustomLink('laura-y-ana');
+      const name = freeName('laura-y-ana');
       await app.get(EventBus).publish(PaymentSucceededEvent, {
         orderId: `order-${randomUUID()}`,
         giftId: first.gift.id,
-        customSlug: custom,
+        customSlug: name,
       });
-      expect((await first.client.get()).body.slug).toBe(custom);
+      const custom = (await first.client.get()).body.slug as string;
+      expect(custom).toMatch(customLinkOf(name));
 
       // Chance hands the next gift the very code the first one used to have.
       const fresh = randomCode(GIFT_CODE_LENGTH);
@@ -186,32 +183,29 @@ describe('link privacy', () => {
     });
   });
 
-  describe('checking which links are taken', () => {
-    it('refuses a client that checks too many, whether they were free or taken', async () => {
-      const { gift } = await publishedGift();
-      const from = visitor();
-      const taken = freeCustomLink('laura');
-      await app.get(EventBus).publish(PaymentSucceededEvent, {
-        orderId: `order-${randomUUID()}`,
-        giftId: gift.id,
-        customSlug: taken,
-      });
-      for (let i = 0; i < CHECK_LIMIT - 1; i += 1) {
-        await check(freeCustomLink('laura'), from).expect(200);
-      }
-      expect((await check(taken, from).expect(200)).body.reason).toBe('TAKEN');
+  describe('custom links', () => {
+    it('never give two gifts the same link, even when chance draws the same code for the same name', async () => {
+      const [first, second] = [await publishedGift(), await publishedGift()];
+      const name = freeName('la-misma');
+      const buy = (giftId: string) =>
+        app.get(EventBus).publish(PaymentSucceededEvent, {
+          orderId: `order-${randomUUID()}`,
+          giftId,
+          customSlug: name,
+        });
+      await buy(first.gift.id);
+      const taken = (await first.client.get()).body.slug as string;
 
-      const refused = await check(taken, from).expect(429);
-      expect(refused.body.code).toBe('RATE_LIMITED');
-      await check(freeCustomLink('laura'), from).expect(429);
-    });
+      // The second gift is dealt the very link of the first one, then another.
+      vi.mocked(slugGenerator.generateCustomLink).mockReturnValueOnce(taken);
+      await buy(second.gift.id);
+      const other = (await second.client.get()).body.slug as string;
+      expect(other).toMatch(customLinkOf(name));
+      expect(other).not.toBe(taken);
 
-    it('keeps the two budgets apart: checking links does not stop a visitor opening a gift', async () => {
-      const { gift } = await publishedGift();
       const from = visitor();
-      for (let i = 0; i < CHECK_LIMIT; i += 1) await check('7k2m/for/laura', from).expect(200);
-      await check('7k2m/for/laura', from).expect(429);
-      await open(gift.slug, from).expect(200);
+      expect((await open(taken, from).expect(200)).body.slug).toBe(taken);
+      expect((await open(other, from).expect(200)).body.slug).toBe(other);
     });
   });
 });

@@ -48,14 +48,11 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
   await expect(upgrade.getByRole('button', { name: 'Pay €4.99' })).toBeVisible();
   await expect(page).toHaveURL(/\/preview$/);
   await upgrade.getByRole('checkbox').check();
-  // The link starts from the recipient's name, behind a random code the creator does not choose
+  // The creator only chooses the name; the code in front is added by the server on payment
   const preview = upgrade.getByTestId('slug-preview');
-  await expect(preview).toHaveText(/^localhost:3000\/[a-z0-9]{4}\/for\/marta$/);
+  await expect(preview).toHaveText('localhost:3000/····/for/marta');
   await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('te-quiero-marta');
-  await expect(preview).toHaveText(/^localhost:3000\/[a-z0-9]{4}\/for\/te-quiero-marta$/);
-  await expect(upgrade.getByText('Available')).toBeVisible();
-  // The stored link is the path of the address: "7k2m/for/te-quiero-marta".
-  const slug = ((await preview.textContent()) ?? '').replace('localhost:3000/', '');
+  await expect(preview).toHaveText('localhost:3000/····/for/te-quiero-marta');
   await upgrade.getByRole('button', { name: 'Pay €6.98' }).click();
 
   // "Stripe" sends the customer back before the webhook arrives: the page waits
@@ -82,7 +79,14 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
 
   await expect(page.getByRole('heading', { name: 'Your gift has everything' })).toBeVisible();
   await expect(page.getByText('It is published without watermark.')).toBeVisible();
-  await expect(page.getByRole('link', { name: `localhost:3000/${slug}` })).toBeVisible();
+  // The link has the name that was bought, behind a code nobody chose
+  const link = page.getByRole('link', {
+    name: /^localhost:3000\/[a-z0-9]{4}\/for\/te-quiero-marta$/,
+  });
+  await expect(link).toBeVisible();
+  // The stored link is the path of the address: "7k2m/for/te-quiero-marta".
+  const slug = ((await link.textContent()) ?? '').replace('localhost:3000/', '');
+  expect(slug).toMatch(/[0-9]/);
   await expect(page.getByRole('img', { name: 'QR code of your gift' })).toBeVisible();
 
   // Final QR code in both formats
@@ -96,12 +100,6 @@ test('a creator uses PRO features for free, pays once to publish with a custom l
       `remember-me-${slug.replaceAll('/', '-')}.${extension}`,
     );
   }
-
-  // The link is now taken
-  const check = (await (
-    await fetch(`http://localhost:4000/gifts/check-slug?slug=${encodeURIComponent(slug)}`)
-  ).json()) as { available: boolean; reason: string };
-  expect(check).toMatchObject({ available: false, reason: 'TAKEN' });
 
   // Back in the editor it is the full experience, with the name fixed
   await page.getByRole('link', { name: 'Back to the editor' }).click();

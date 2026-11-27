@@ -123,8 +123,9 @@
     "editLinkText": "There is no account. This private link is the only way to edit the gift from another device, so save it somewhere safe and do not share it.",
     "copyEditLink": "Copy edit link",
     "pendingSlugTitle": "Choose another link",
-    "pendingSlugText": "The custom link you paid for was taken just before your payment. Pick another one at no extra cost.",
+    "pendingSlugText": "We could not use the name you chose for your custom link. Pick another one at no extra cost.",
     "pendingSlugSave": "Use this link",
+    "pendingSlugError": "That name could not be saved. Try again.",
     "draftNote": "Try everything for free: you only pay if you publish with PRO features. A draft that is not published is deleted on {date}.",
     "publishedGraceText": "Share the link or print the QR code. You can still fix typos and swap photos until {date}; after that the gift stays as it is.",
     "publishedLockedText": "This gift has been delivered and can no longer be edited. Its link and QR code keep working.",
@@ -171,9 +172,7 @@
     "slugPlaceholder": "te-quiero-ana",
     "slugHint": "Lowercase letters, numbers and hyphens.",
     "slugInvalid": "Use {min} to {max} lowercase letters, numbers or hyphens.",
-    "slugChecking": "Checking…",
-    "slugAvailable": "Available",
-    "slugTaken": "Not available. Try another name.",
+    "slugValid": "Good. This name can be yours.",
     "pay": "Pay {price}",
     "payLoading": "Loading price…",
     "payNote": "One payment for this gift. No subscription. Card, Apple Pay, Google Pay and Bizum where available.",
@@ -191,7 +190,6 @@
     "failedTitle": "We couldn't check your payment",
     "failedText": "If you paid, your gift will be upgraded as soon as the payment is confirmed. Reload this page in a moment.",
     "retry": "Reload",
-    "slugUnchecked": "We couldn't check this link right now. You can still pay: if it turns out to be taken, you will pick another one afterwards at no cost.",
     "proUsedLabel": "PRO features in this gift",
     "proFeature": {
       "EXTRA_CARDS": "More than {max} cards",
@@ -201,7 +199,7 @@
     },
     "featureForever": "An eternal memory: it never expires",
     "featureForeverHint": "Free gifts are deleted {months, plural, one {# month} other {# months}} after they are published.",
-    "slugCodeHint": "The code in front is chosen for you. It keeps strangers from finding the gift by guessing names."
+    "slugCodeHint": "A code of {length} characters goes in front; you will see it as soon as you pay. It keeps strangers from finding the gift by guessing names."
   },
   "experience": {
     "metaTitle": "A gift for {name}",

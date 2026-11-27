@@ -6,12 +6,12 @@ There are no user accounts. Access is by possession of a secret tied to one gift
 
 ## The four kinds of access
 
-| Kind             | Proves                                 | Checked by                                                                    |
-| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------- |
-| None             | Nothing                                | Rate limits only. Create gift, slug availability, prices, public gift, health |
-| Edit token       | The caller created the gift            | `GiftsService.authorize`, inside the `gifts` module only                      |
-| Gift grant       | The caller recently proved edit access | `GiftGrantGuard`, in `media`, `qr`, `payments`                                |
-| Stripe signature | The request comes from Stripe          | `StripePaymentGateway.parseWebhook`                                           |
+| Kind             | Proves                                 | Checked by                                                 |
+| ---------------- | -------------------------------------- | ---------------------------------------------------------- |
+| None             | Nothing                                | Rate limits only. Create gift, prices, public gift, health |
+| Edit token       | The caller created the gift            | `GiftsService.authorize`, inside the `gifts` module only   |
+| Gift grant       | The caller recently proved edit access | `GiftGrantGuard`, in `media`, `qr`, `payments`             |
+| Stripe signature | The request comes from Stripe          | `StripePaymentGateway.parseWebhook`                        |
 
 The public gift endpoint has no credential by design: the slug is the secret, and only published gifts
 are served.
@@ -74,8 +74,7 @@ Configured in `apps/api/src/app.module.ts` with `@nestjs/throttler`; `ThrottlerG
 - Separate from these: `PaymentsService.confirm` limits its own calls to Stripe
   (`.claude/skills/backend/references/payments.md`).
 
-Besides the throttlers, `LinkGuessGuard` limits how many links one client may try (wrong links opened,
-availability checks made): see "Guessing links" in `.claude/skills/backend/references/gifts.md`. It also
+Besides the throttlers, `LinkGuessGuard` limits how many links one client may try (wrong links opened): see "Guessing links" in `.claude/skills/backend/references/gifts.md`. It also
 keys on the request IP, so it depends on the same proxy trust.
 
 ## Proxy trust

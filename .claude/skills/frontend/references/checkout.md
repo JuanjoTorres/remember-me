@@ -65,29 +65,25 @@ the web code or in messages.
 
 ## Custom link (`apps/web/src/features/checkout/CustomSlugField.tsx`)
 
-- Props: `host` (taken from `gift.publicUrl`), `initialName`, and `onChange(slug, state)`, called with the
-  link as it is stored ("7k2m/for/ana-luis").
-- The creator chooses only the name. The code in front is `randomCode(CUSTOM_CODE_LENGTH)`, drawn when the
-  field mounts; `customLink` joins the two and `CustomSlugSchema` validates the result.
+- Props: `host` (taken from `gift.publicUrl`), `initialName`, and `onChange(name, state)`, called with the
+  name alone ("ana-luis").
+- The creator chooses only the name. The code in front is drawn by the API when the link is given to the
+  gift, so the field never sends or shows one: the address is previewed with `····` where the code will
+  be, and a hint says it appears on payment.
 - `toSlugInput` keeps the name in slug form using `slugify`.
-- `SlugState`: `empty`, `invalid` (fails `CustomSlugSchema`: a name too short, too long or reserved),
-  `checking`, `available`, `taken`, `unchecked` (the availability request failed or was refused).
-- Availability: a debounced `checkSlug` (`GET /gifts/check-slug`) with an `AbortController`, restarted on
-  every change. If that very link is taken the field draws another code and asks again at once, up to
-  `CODE_RETRIES` times, before it says `taken`. The API allows a limited number of checks per client;
-  past it the request fails and the state is `unchecked`.
-- The live preview (`data-testid="slug-preview"`) shows the address: host, code, `/for/` and the name.
+- `SlugState`: `empty`, `invalid` (fails `CustomNameSchema`: too short, too long or reserved), `valid`.
+  Validation is local; the field makes no request.
+- The live preview (`data-testid="slug-preview"`) shows host, the placeholder, `/for/` and the name.
 - In the sheet, the field starts from the recipient's name. Payment is blocked unless the state is
-  `available` or `unchecked`.
+  `valid`; `customSlug` in the checkout request is the name.
 - The same field is reused by `PendingSlug` in
   `apps/web/src/features/gift-creator/components/SharePanel.tsx` when a paid link was taken meanwhile; there
-  the button needs `available` and calls `PUT /gifts/:id/slug`.
+  the button needs `valid` and calls `PUT /gifts/:id/slug` with the name; a failure shows
+  `pendingSlugError`.
 
 ## Paying
 
-`pay()` in the sheet does not check the link again (the field did, and a second check would spend the
-creator's budget and fail the payment with it; a link taken meanwhile becomes `customSlugPending`). It
-calls `createCheckoutSession`
+`pay()` in the sheet calls `createCheckoutSession`
 inside `withGrant` (`POST /payments/checkout-session`) with `giftId`, `includeCustomSlug`, `customSlug`,
 `successUrl` (the gift's success page on the current origin) and `cancelUrl` (`cancelPath`, or the editor); then
 `redirect(session.checkoutUrl)`. `CONFLICT` shows the "already premium" message, anything else the generic
@@ -118,8 +114,8 @@ payment error. The request type is `CheckoutSessionRequest` in `packages/shared-
 - 2026-11-24: one payment, asked for when publishing, with the custom link as an optional extra in the same
   checkout. The sheet highlights that a paid gift never expires.
 - 2026-11-24: a custom link always carries an ending of at least 4 characters, random by default.
-- 2026-11-27 (replaces the line above): the code goes in front of the name and the system chooses it; the
-  creator only types the name. See `.claude/skills/backend/references/gifts.md`.
+- 2026-11-27 (replaces the line above): the code goes in front of the name and the API draws it when the
+  link is applied; the creator only types the name and nothing is checked with the server beforehand. See `.claude/skills/backend/references/gifts.md`.
 
 ## Change checklist
 

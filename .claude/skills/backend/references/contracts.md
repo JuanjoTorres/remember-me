@@ -19,7 +19,7 @@ Everything is re-exported from `packages/shared-types/src/index.ts`. A new file 
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/shared-types/src/plans.ts`     | `PlanSchema`, `CardTypeSchema`, `RevealTemplateSchema`, `QrFormatSchema`, `PlanCapabilitiesSchema`, `PLAN_CAPABILITIES`, `MAX_CARDS_HARD_LIMIT`, `planOf`, `PremiumCapabilitySchema`, `PlanCheck`, `checkAddCard`, `checkRevealTemplate`, `checkQrFormat`, `ProFeatureSchema`, `proFeaturesOf`                                                  |
 | `packages/shared-types/src/gifts.ts`     | `LocaleSchema`, `GiftStatusSchema`, `CARD_TEXT_MAX`, the three card payload schemas, `CardInputSchema`, `CardSchema`, `ReorderCardsRequestSchema`, `RevealSchema`, `CreateGiftRequestSchema`, `UpdateGiftRequestSchema`, `ChangeSlugRequestSchema`, `GiftEditorViewSchema`, `CreateGiftResponseSchema`, `PublicGiftSchema`, `EDIT_TOKEN_HEADER` |
-| `packages/shared-types/src/slug.ts`      | `SLUG_MIN_LENGTH`, `SLUG_MAX_LENGTH`, `RESERVED_SLUGS`, `SlugSchema`, `GIFT_CODE_LENGTH`, `CUSTOM_CODE_LENGTH`, `CODE_MAX_LENGTH`, `CUSTOM_LINK_SEPARATOR`, `randomCode`, `randomCodeCharacters`, `CodeSchema`, `customLink`, `parseLink`, `GiftLinkSchema`, `CustomSlugSchema`, `slugify`, `SlugAvailabilitySchema`                            |
+| `packages/shared-types/src/slug.ts`      | `SLUG_MIN_LENGTH`, `SLUG_MAX_LENGTH`, `RESERVED_SLUGS`, `SlugSchema`, `GIFT_CODE_LENGTH`, `CUSTOM_CODE_LENGTH`, `CODE_MAX_LENGTH`, `CUSTOM_LINK_SEPARATOR`, `randomCode`, `randomCodeCharacters`, `CodeSchema`, `customLink`, `parseLink`, `GiftLinkSchema`, `CustomNameSchema`, `slugify`                                                      |
 | `packages/shared-types/src/media.ts`     | `MediaKindSchema`, `MediaUploadResponseSchema`, `MEDIA_LIMITS`                                                                                                                                                                                                                                                                                  |
 | `packages/shared-types/src/payments.ts`  | `CheckoutSessionRequestSchema`, `CheckoutSessionResponseSchema`, `PriceSchema`, `PricesResponseSchema`, `PaymentConfirmationSchema`                                                                                                                                                                                                             |
 | `packages/shared-types/src/errors.ts`    | `ErrorCodeSchema`, `PremiumRequiredDetailsSchema`, `GiftLockedDetailsSchema`, `ApiErrorSchema`                                                                                                                                                                                                                                                  |
@@ -41,7 +41,6 @@ an HTTP status. It is a `Record<ErrorCode, number>`, so a code without a status 
 | `PREMIUM_REQUIRED`  | 402    | A plan check failed; details follow `PremiumRequiredDetailsSchema`           |
 | `NOT_FOUND`         | 404    | Unknown gift, card or public slug                                            |
 | `CONFLICT`          | 409    | Hard ceilings, already paid, QR of an unpublished gift                       |
-| `SLUG_TAKEN`        | 409    | Custom link in use                                                           |
 | `PAYLOAD_TOO_LARGE` | 413    | Upload over the size limit (raised by the file interceptor)                  |
 | `UNSUPPORTED_MEDIA` | 415    | File content is not an accepted image or audio format                        |
 | `GIFT_INCOMPLETE`   | 422    | Publish requirements; details `{ missing: [...] }`                           |
@@ -78,8 +77,8 @@ A link is stored as its path: a code alone ("x9k2bd7m"), or a code, `/for/` and 
 alphabet with at least one digit. `SlugSchema` is the name of a custom link: length between
 `SLUG_MIN_LENGTH` and `SLUG_MAX_LENGTH`, lowercase letters, digits and single hyphens, no hyphen at either
 end. `parseLink` splits a stored link into `code` and `name` (`null` for a generated one); `customLink`
-joins them. `GiftLinkSchema` accepts both shapes; `CustomSlugSchema` only the custom one, and refuses a
-name in `RESERVED_SLUGS`. `randomCode(length)` draws without bias, redraws until the code has a digit,
+joins them. `GiftLinkSchema` accepts both shapes. `CustomNameSchema` is what a client may send for a custom link:
+the name alone, not in `RESERVED_SLUGS`; the code is the API's to draw. `randomCode(length)` draws without bias, redraws until the code has a digit,
 and uses Web Crypto, which
 exists in Node and in browsers; the package declares it locally because it loads no platform types.
 

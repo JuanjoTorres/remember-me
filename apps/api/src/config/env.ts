@@ -44,8 +44,6 @@ const EnvSchema = z
      * is refused for the rest of that time. Keeps links from being found by trying addresses.
      */
     LINK_LOOKUP_MISS_LIMIT: z.coerce.number().int().positive().default(30),
-    /** Link availability checks one client (IP) may make in ten minutes. */
-    SLUG_CHECK_LIMIT: z.coerce.number().int().positive().default(60),
     /** Reverse proxies in front of the API, so that the client IP is read from X-Forwarded-For. */
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     EVENT_BUS_DRIVER: z.enum(['memory', 'redis']).default('memory'),

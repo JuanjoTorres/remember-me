@@ -15,7 +15,7 @@ import { PaymentSucceededEvent } from '../src/shared/events/contracts.js';
 import { EventBus } from '../src/shared/events/event-bus.js';
 import { PrismaService } from '../src/shared/prisma/prisma.service.js';
 import { createTestApp } from './create-test-app.js';
-import { createGift, editor, freeCustomLink, makePremium, photoCard } from './helpers.js';
+import { createGift, customLinkOf, editor, freeName, makePremium, photoCard } from './helpers.js';
 
 // jsqr is CommonJS with a `default` export; its typings and Node's ESM interop disagree.
 const jsQR = ((jsqrModule as unknown as { default?: typeof jsqrModule }).default ??
@@ -346,13 +346,14 @@ describe('media and qr', () => {
 
     it('never encodes a dead link: a link replaced after publication keeps working', async () => {
       const { gift, grant, client } = await setup({ published: true });
-      const custom = freeCustomLink('para-sarah');
+      const name = freeName('para-sarah');
       await app.get(EventBus).publish(PaymentSucceededEvent, {
         orderId: `order-${gift.id}`,
         giftId: gift.id,
-        customSlug: custom,
+        customSlug: name,
       });
-      expect(((await client.get()).body as GiftEditorView).slug).toBe(custom);
+      const custom = ((await client.get()).body as GiftEditorView).slug;
+      expect(custom).toMatch(customLinkOf(name));
 
       // A grant issued before the payment still names the old link.
       const response = await qr(grant)

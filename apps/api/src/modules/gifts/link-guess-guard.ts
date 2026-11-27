@@ -4,7 +4,7 @@ import type { Env } from '../../config/env.js';
 import { AppError } from '../../shared/http/app-error.js';
 import { AttemptLimiter } from '../../shared/http/attempt-limiter.js';
 
-/** Both budgets are counted over this long. */
+/** Misses are counted over this long. */
 export const LINK_GUESS_WINDOW_MS = 10 * 60 * 1000;
 
 /**
@@ -17,12 +17,9 @@ export const LINK_GUESS_WINDOW_MS = 10 * 60 * 1000;
 export class LinkGuessGuard {
   /** Links opened that led to no gift. */
   private readonly misses: AttemptLimiter;
-  /** Availability checks: each one tells whether a link exists, so every check counts. */
-  private readonly checks: AttemptLimiter;
 
   constructor(@Inject(ENV) env: Env) {
     this.misses = new AttemptLimiter(env.LINK_LOOKUP_MISS_LIMIT, LINK_GUESS_WINDOW_MS);
-    this.checks = new AttemptLimiter(env.SLUG_CHECK_LIMIT, LINK_GUESS_WINDOW_MS);
   }
 
   /** Refuses a client that has opened too many links that do not exist. */
@@ -34,13 +31,6 @@ export class LinkGuessGuard {
   /** A link the client opened led to no gift. */
   missed(address: string): void {
     this.misses.record(clientOf(address));
-  }
-
-  /** Counts an availability check, and refuses it once the client has made too many. */
-  countCheck(address: string): void {
-    const client = clientOf(address);
-    if (this.checks.isBlocked(client)) throw tooMany(this.checks.retryAfterSeconds(client));
-    this.checks.record(client);
   }
 }
 
