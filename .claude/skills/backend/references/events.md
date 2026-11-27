@@ -50,18 +50,19 @@ under both: handlers idempotent, publishers not assuming the effect already happ
 
 At least once, in no guaranteed order. Every handler must be idempotent and tolerate an old event arriving
 after a newer one. Existing examples: `applied_order_ids` in `GiftsService.applyPayment`; the status guard
-in `PaymentsService.markRefundDue`; the per-file loop in `MediaService.deleteAllOf`.
+in `PaymentsService.markRefundDue`; the per-file loop in `MediaService.deleteAllOf`; the plain overwrite in `PaymentsService.forgetCustomer`.
 
 ## Event contracts
 
-| Constant                | Name                | Payload                                                           | Publisher                                                                | Subscribers (name → handler)                                                                                 |
-| ----------------------- | ------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `PaymentSucceededEvent` | `payment.succeeded` | `orderId` string, `giftId` UUID, `customSlug` string or null      | `PaymentsService.announce` (from `settle`, and re-announce in `confirm`) | "gifts" → `GiftsService.applyPayment`, wired in `apps/api/src/modules/gifts/payment-succeeded.subscriber.ts` |
-| `GiftDeletedEvent`      | `gift.deleted`      | `giftId` UUID                                                     | `GiftsService.remove`, before the gift row is deleted                    | "media" → `MediaService.deleteAllOf`, wired in `MediaService.onModuleInit`                                   |
-| `PaymentUnappliedEvent` | `payment.unapplied` | `orderId` string, `giftId` UUID, `reason` (only `GIFT_NOT_FOUND`) | `GiftsService.applyPayment` when the gift no longer exists               | "payments" → `PaymentsService.markRefundDue`, wired in `PaymentsService.onModuleInit`                        |
+| Constant                | Name                | Payload                                                                                              | Publisher                                                                                      | Subscribers (name → handler)                                                                                                                                       |
+| ----------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PaymentSucceededEvent` | `payment.succeeded` | `orderId` string, `giftId` UUID, `customSlug` string or null, `customerEmail` string, null or absent | `PaymentsService.announce` (from `settle`, and re-announce in `confirm`)                       | "gifts" → `GiftsService.applyPayment`, wired in `apps/api/src/modules/gifts/payment-succeeded.subscriber.ts`                                                       |
+| `GiftDeletedEvent`      | `gift.deleted`      | `giftId` UUID                                                                                        | `GiftsService.remove` and `GiftLifecycleService.deleteExpired`, before the gift row is deleted | "media" → `MediaService.deleteAllOf`, wired in `MediaService.onModuleInit`; "payments" → `PaymentsService.forgetCustomer`, wired in `PaymentsService.onModuleInit` |
+| `PaymentUnappliedEvent` | `payment.unapplied` | `orderId` string, `giftId` UUID, `reason` (only `GIFT_NOT_FOUND`)                                    | `GiftsService.applyPayment` when the gift no longer exists                                     | "payments" → `PaymentsService.markRefundDue`, wired in `PaymentsService.onModuleInit`                                                                              |
 
-Payloads carry ids and the minimum facts, not rows. `payment.succeeded` takes `customSlug` from the
-module's own order, not from Stripe.
+Payloads carry ids and the minimum facts, not rows. `payment.succeeded` takes `customSlug` and
+`customerEmail` from the module's own order (the address is stored there when the payment is settled).
+`customerEmail` is optional in the schema because events stored before it existed do not have it.
 
 ## Recipe: add an event
 

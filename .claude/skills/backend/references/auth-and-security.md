@@ -72,6 +72,10 @@ Configured in `apps/api/src/app.module.ts` with `@nestjs/throttler`; `ThrottlerG
 - Separate from these: `PaymentsService.confirm` limits its own calls to Stripe
   (`.claude/skills/backend/references/payments.md`).
 
+Besides the throttlers, `LinkGuessGuard` limits how many links one client may try (wrong links opened,
+availability checks made): see "Guessing links" in `.claude/skills/backend/references/gifts.md`. It also
+keys on the request IP, so it depends on the same proxy trust.
+
 ## Proxy trust
 
 `configureApp` sets Express `trust proxy` to `TRUST_PROXY_HOPS`. It must equal the number of reverse

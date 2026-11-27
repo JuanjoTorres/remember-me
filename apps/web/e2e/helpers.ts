@@ -36,6 +36,7 @@ export async function deliverPaidWebhook(
         payment_status: 'paid',
         amount_total: amountTotal,
         currency: 'eur',
+        customer_details: { email: 'buyer@example.com' },
         client_reference_id: session.orderId,
         metadata: { orderId: session.orderId },
       },
@@ -77,6 +78,13 @@ export async function fillSurprise(page: Page, headline: string): Promise<void> 
   await page.getByRole('textbox', { name: /^The surprise/ }).fill(headline);
   await page.getByRole('textbox', { name: /^Message/ }).fill('Pack light.');
   await page.getByRole('heading', { name: 'The surprise', exact: true }).click();
+}
+
+/** From the editor to the preview, where a gift is published. */
+export async function openPreview(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Preview and publish' }).click();
+  await expect(page).toHaveURL(/\/create\/[0-9a-f-]{36}\/preview$/);
+  await expect(page.getByText('Preview — not published yet')).toBeVisible();
 }
 
 /** Collects the JavaScript a page downloads, to check what a route ships to the browser. */

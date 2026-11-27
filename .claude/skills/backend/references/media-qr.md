@@ -20,8 +20,10 @@ Read this before changing uploads, media processing, object storage, or QR code 
 2. The file interceptor accepts one file in field `file`, kept in memory, and enforces
    `MEDIA_LIMITS.imageMaxBytes` or `MEDIA_LIMITS.audioMaxBytes` (shared with the web so it can check before
    sending). Over the limit is `PAYLOAD_TOO_LARGE`; no file is `VALIDATION_ERROR`.
-3. Audio needs a plan whose `cardTypes` include `AUDIO_NOTE`, read from `PLAN_CAPABILITIES`; otherwise
-   `PREMIUM_REQUIRED` with capability `AUDIO_UPLOAD`. Images are allowed on every plan.
+3. Audio of a published gift (the grant's `published` claim) needs a plan whose `cardTypes` include
+   `AUDIO_NOTE`, read from `PLAN_CAPABILITIES`; otherwise `PREMIUM_REQUIRED` with capability
+   `AUDIO_UPLOAD`. A draft may upload audio on any plan: the plan is settled when the gift is published.
+   Images are allowed on every plan.
 4. Processing (below). Failure is `UNSUPPORTED_MEDIA`.
 5. A `media_assets` row is reserved inside a transaction that holds a per-gift advisory lock and checks
    the ceiling `MAX_ASSETS_PER_GIFT` (`CONFLICT` when reached). Parallel uploads cannot pass it.

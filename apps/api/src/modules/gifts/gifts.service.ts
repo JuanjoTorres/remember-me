@@ -6,14 +6,22 @@ import {
   type CreateGiftRequest,
   type CreateGiftResponse,
   CustomSlugSchema,
+  draftExpiry,
+  freeGiftExpiry,
   type GiftEditorView,
+  type GiftLockedDetails,
+  joinSlug,
   MAX_CARDS_HARD_LIMIT,
   planOf,
   type PlanCheck,
+  proFeaturesOf,
   type PublicGift,
+  randomSlugSuffix,
   RESERVED_SLUGS,
   type SlugAvailability,
+  SLUG_SUGGESTION_COUNT,
   SlugSchema,
+  splitSlug,
   type UpdateGiftRequest,
 } from '@remember-me/shared-types';
 import { GiftGrantService } from '../../shared/auth/gift-grant.service.js';
@@ -25,12 +33,14 @@ import { EventBus } from '../../shared/events/event-bus.js';
 import { AppError } from '../../shared/http/app-error.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
 import { editTokenMatches, generateEditToken } from './edit-token.js';
-import { type GiftWithCards, toEditorView, toPublicGift } from './gift.mapper.js';
+import { type GiftWithCards, isLocked, toEditorView, toPublicGift } from './gift.mapper.js';
 import { MediaUrlPolicy } from './media-url-policy.js';
 import { generateSlug } from './slug-generator.js';
 
 const WITH_CARDS = { cards: true } as const;
 const SLUG_ATTEMPTS = 5;
+/** Candidates tried to find `SLUG_SUGGESTION_COUNT` free links. */
+const SUGGESTION_ATTEMPTS = 12;
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -48,15 +58,41 @@ function missingToPublish(gift: GiftWithCards): string[] {
   ];
 }
 
+function locked(scope: GiftLockedDetails['scope'], message: string): AppError {
+  const details: GiftLockedDetails = { scope };
+  return new AppError('GIFT_LOCKED', message, details);
+}
+
+/** A delivered gift must not be reused for someone else: after the correction window nothing changes. */
+function assertEditable(gift: GiftWithCards, now = new Date()): void {
+  if (isLocked(gift, now)) {
+    throw locked('GIFT', 'This gift was delivered and can no longer be edited');
+  }
+}
+
 /**
- * The link is fixed on first publication, so that it can carry the recipient's name. A link the
- * creator chose is kept.
+ * A draft may use every feature: the plan is settled when the gift is published. From then on the
+ * limits of its plan apply to every change.
  */
-function publishData(gift: Pick<GiftWithCards, 'slugIsCustom' | 'recipientName'>) {
+function planApplies(gift: GiftWithCards): boolean {
+  return gift.status === 'PUBLISHED';
+}
+
+/**
+ * The link is fixed on first publication, so that it can carry the recipient's name: `slug` is the
+ * new generated link, or `null` to keep the one the creator chose. A free gift is kept for a
+ * limited time; a paid one never expires.
+ */
+function publishData(
+  gift: Pick<GiftWithCards, 'isPremium'>,
+  slug: string | null,
+  now = new Date(),
+) {
   return {
     status: 'PUBLISHED' as const,
-    publishedAt: new Date(),
-    ...(gift.slugIsCustom ? {} : { slug: generateSlug(gift.recipientName) }),
+    publishedAt: now,
+    expiresAt: gift.isPremium ? null : freeGiftExpiry(now),
+    ...(slug === null ? {} : { slug }),
   };
 }
 
@@ -71,9 +107,15 @@ export class GiftsService {
 
   async create(request: CreateGiftRequest): Promise<CreateGiftResponse> {
     const { token, hash } = generateEditToken();
-    const gift = await this.withSlugRetry(() =>
+    const gift = await this.withSlugRetry(async () =>
       this.prisma.gift.create({
-        data: { slug: generateSlug(''), editTokenHash: hash, locale: request.locale },
+        data: {
+          slug: await this.freeGeneratedSlug(this.prisma, ''),
+          editTokenHash: hash,
+          locale: request.locale,
+          // A draft nobody publishes is deleted, which frees its files and its link.
+          expiresAt: draftExpiry(new Date()),
+        },
         include: WITH_CARDS,
       }),
     );
@@ -89,19 +131,28 @@ export class GiftsService {
     editToken: string | undefined,
     changes: UpdateGiftRequest,
   ): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, editToken);
+    await this.authorize(giftId, editToken);
     const { reveal } = changes;
-    if (reveal?.template) {
-      assertPlanAllows(
-        checkRevealTemplate(planOf(gift), reveal.template),
-        'This reveal is part of the full experience',
-      );
-    }
     if (reveal) this.mediaPolicy(giftId).assertReveal(reveal);
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      // Locked so that a concurrent publication sees either the old or the new headline.
+      // Locked so that a concurrent publication sees either the old or the new values.
       const current = await this.lock(tx, giftId);
+      assertEditable(current);
+      if (
+        current.status === 'PUBLISHED' &&
+        changes.recipientName !== undefined &&
+        changes.recipientName !== current.recipientName
+      ) {
+        // The gift was made for this person; a new name would turn it into a gift for someone else.
+        throw locked('RECIPIENT_NAME', "The recipient's name cannot change once published");
+      }
+      if (reveal?.template && planApplies(current)) {
+        assertPlanAllows(
+          checkRevealTemplate(planOf(current), reveal.template),
+          'This reveal is part of the full experience',
+        );
+      }
       if (current.status === 'PUBLISHED' && reveal?.headline === '') {
         throw new AppError('GIFT_INCOMPLETE', 'A published gift needs its surprise', {
           missing: ['REVEAL_HEADLINE'],
@@ -136,11 +187,14 @@ export class GiftsService {
     await this.prisma.$transaction(async (tx) => {
       // Locked so that two concurrent requests cannot both pass the card limit.
       const gift = await this.lock(tx, giftId);
+      assertEditable(gift);
 
-      assertPlanAllows(
-        checkAddCard(planOf(gift), gift.cards.length, card.type),
-        'This needs the full experience',
-      );
+      if (planApplies(gift)) {
+        assertPlanAllows(
+          checkAddCard(planOf(gift), gift.cards.length, card.type),
+          'This needs the full experience',
+        );
+      }
       if (gift.cards.length >= MAX_CARDS_HARD_LIMIT) {
         throw new AppError('CONFLICT', `A gift can have at most ${MAX_CARDS_HARD_LIMIT} cards`);
       }
@@ -158,14 +212,19 @@ export class GiftsService {
     cardId: string,
     card: CardInput,
   ): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, editToken);
-    const existing = gift.cards.find((candidate) => candidate.id === cardId);
-    if (!existing) throw new AppError('NOT_FOUND', 'Card not found');
-    if (existing.type !== card.type) {
-      throw new AppError('VALIDATION_ERROR', 'The type of a card cannot change');
-    }
+    await this.authorize(giftId, editToken);
     this.mediaPolicy(giftId).assertCard(card);
-    await this.prisma.giftCard.update({ where: { id: cardId }, data: { payload: card.payload } });
+    await this.prisma.$transaction(async (tx) => {
+      // Locked, like every other edit: the window closing is decided on one consistent read.
+      const gift = await this.lock(tx, giftId);
+      assertEditable(gift);
+      const existing = gift.cards.find((candidate) => candidate.id === cardId);
+      if (!existing) throw new AppError('NOT_FOUND', 'Card not found');
+      if (existing.type !== card.type) {
+        throw new AppError('VALIDATION_ERROR', 'The type of a card cannot change');
+      }
+      await tx.giftCard.update({ where: { id: cardId }, data: { payload: card.payload } });
+    });
     return this.view(await this.load(giftId));
   }
 
@@ -177,6 +236,7 @@ export class GiftsService {
     await this.authorize(giftId, editToken);
     await this.prisma.$transaction(async (tx) => {
       const gift = await this.lock(tx, giftId);
+      assertEditable(gift);
       if (!gift.cards.some((card) => card.id === cardId)) {
         throw new AppError('NOT_FOUND', 'Card not found');
       }
@@ -195,23 +255,25 @@ export class GiftsService {
     editToken: string | undefined,
     cardIds: string[],
   ): Promise<GiftEditorView> {
-    const gift = await this.authorize(giftId, editToken);
-    const current = new Set(gift.cards.map((card) => card.id));
-    const sameCards =
-      cardIds.length === current.size &&
-      new Set(cardIds).size === current.size &&
-      cardIds.every((id) => current.has(id));
-    if (!sameCards) {
-      throw new AppError(
-        'VALIDATION_ERROR',
-        'The new order must contain every card of the gift exactly once',
-      );
-    }
-    await this.prisma.$transaction(
-      cardIds.map((id, position) =>
-        this.prisma.giftCard.update({ where: { id }, data: { position } }),
-      ),
-    );
+    await this.authorize(giftId, editToken);
+    await this.prisma.$transaction(async (tx) => {
+      const gift = await this.lock(tx, giftId);
+      assertEditable(gift);
+      const current = new Set(gift.cards.map((card) => card.id));
+      const sameCards =
+        cardIds.length === current.size &&
+        new Set(cardIds).size === current.size &&
+        cardIds.every((id) => current.has(id));
+      if (!sameCards) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'The new order must contain every card of the gift exactly once',
+        );
+      }
+      for (const [position, id] of cardIds.entries()) {
+        await tx.giftCard.update({ where: { id }, data: { position } });
+      }
+    });
     return this.view(await this.load(giftId));
   }
 
@@ -228,9 +290,23 @@ export class GiftsService {
           });
         }
         if (gift.status === 'PUBLISHED') return gift;
+        const proFeatures = proFeaturesOf({
+          cards: gift.cards,
+          reveal: { template: gift.revealTemplate },
+        });
+        if (!gift.isPremium && proFeatures.length > 0) {
+          // Editing was free; what the gift ended up using is paid for here, once.
+          throw new AppError('PREMIUM_REQUIRED', 'This gift uses the full experience', {
+            capability: 'PRO_FEATURES',
+            proFeatures,
+          });
+        }
         return tx.gift.update({
           where: { id: giftId },
-          data: publishData(gift),
+          data: publishData(
+            gift,
+            gift.slugIsCustom ? null : await this.freeGeneratedSlug(tx, gift.recipientName, giftId),
+          ),
           include: WITH_CARDS,
         });
       }),
@@ -278,30 +354,62 @@ export class GiftsService {
     await this.prisma.gift.deleteMany({ where: { id: giftId } });
   }
 
-  async slugAvailability(slug: string): Promise<SlugAvailability> {
-    if (!SlugSchema.safeParse(slug).success) return { slug, available: false, reason: 'INVALID' };
-    if (RESERVED_SLUGS.includes(slug)) return { slug, available: false, reason: 'RESERVED' };
-    return (await this.slugIsFree(this.prisma, slug))
-      ? { slug, available: true }
-      : { slug, available: false, reason: 'TAKEN' };
+  /**
+   * Whether a custom link can be taken. For a taken one it proposes free links with the same name
+   * and another ending. Advisory: the real check happens under the lock when the link is applied.
+   */
+  async checkSlug(slug: string): Promise<SlugAvailability> {
+    const refused = (reason: NonNullable<SlugAvailability['reason']>): SlugAvailability => ({
+      slug,
+      available: false,
+      reason,
+      suggestions: [],
+    });
+    const parts = SlugSchema.safeParse(slug).success ? splitSlug(slug) : null;
+    if (!parts) return refused('INVALID');
+    if (RESERVED_SLUGS.includes(parts.base)) return refused('RESERVED');
+    if (await this.slugIsFree(this.prisma, slug)) return { slug, available: true, suggestions: [] };
+
+    const suggestions: string[] = [];
+    for (
+      let attempt = 0;
+      attempt < SUGGESTION_ATTEMPTS && suggestions.length < SLUG_SUGGESTION_COUNT;
+      attempt += 1
+    ) {
+      const candidate = joinSlug(parts.base, randomSlugSuffix());
+      if (!suggestions.includes(candidate) && (await this.slugIsFree(this.prisma, candidate))) {
+        suggestions.push(candidate);
+      }
+    }
+    return { ...refused('TAKEN'), suggestions };
   }
 
-  async getPublic(slug: string): Promise<PublicGift> {
+  async getPublic(slug: string, now = new Date()): Promise<PublicGift> {
     const gift =
       (await this.prisma.gift.findUnique({ where: { slug }, include: WITH_CARDS })) ??
       // A link the gift had before it got its custom one.
       (await this.prisma.giftSlugAlias
         .findUnique({ where: { slug }, include: { gift: { include: WITH_CARDS } } })
         .then((alias) => alias?.gift ?? null));
-    if (!gift || gift.status !== 'PUBLISHED') throw new AppError('NOT_FOUND', 'Gift not found');
+    // An expired gift is gone for its recipient even before the daily clean-up removes it.
+    const expired = gift?.expiresAt != null && gift.expiresAt <= now;
+    if (!gift || gift.status !== 'PUBLISHED' || expired) {
+      throw new AppError('NOT_FOUND', 'Gift not found');
+    }
     return toPublicGift(gift);
   }
 
   /**
-   * Applies a confirmed payment: premium, the custom link if one was bought, and publication when
-   * the gift is ready. Running it again for the same order changes nothing.
+   * Applies a confirmed payment: premium, no expiry, the buyer's email, the custom link if one was
+   * bought, and publication when the gift is ready. Running it again for the same order changes
+   * nothing.
    */
-  async applyPayment(orderId: string, giftId: string, customSlug: string | null): Promise<void> {
+  async applyPayment(
+    orderId: string,
+    giftId: string,
+    customSlug: string | null,
+    customerEmail: string | null = null,
+  ): Promise<void> {
     const applied = await this.withSlugRetry(() =>
       this.prisma.$transaction(async (tx) => {
         const gift = await tx.gift
@@ -324,16 +432,21 @@ export class GiftsService {
           data: {
             isPremium: true,
             appliedOrderIds: { push: orderId },
+            // A paid gift is kept for good.
+            expiresAt: null,
+            ...(customerEmail ? { customerEmail } : {}),
             ...(keepsCurrentSlug ? { slugIsCustom: true, customSlugPending: false } : {}),
             ...(slugFree
               ? { slug: customSlug, slugIsCustom: true, customSlugPending: false }
               : // Someone took the link between checkout and payment: the creator picks another.
                 { customSlugPending: wantsCustomSlug ? true : gift.customSlugPending }),
             ...(gift.status === 'DRAFT' && missingToPublish(gift).length === 0
-              ? publishData({
-                  ...gift,
-                  slugIsCustom: gift.slugIsCustom || slugFree || keepsCurrentSlug,
-                })
+              ? publishData(
+                  { isPremium: true },
+                  gift.slugIsCustom || slugFree || keepsCurrentSlug
+                    ? null
+                    : await this.freeGeneratedSlug(tx, gift.recipientName, giftId),
+                )
               : {}),
           },
         });
@@ -404,6 +517,23 @@ export class GiftsService {
     });
   }
 
+  /**
+   * A generated link that no existing gift has or used to have. Old links keep opening their gift
+   * (aliases), so a new gift must never be given one of them: a QR code printed for someone else
+   * would open it. The links of a deleted gift are free again.
+   */
+  private async freeGeneratedSlug(
+    db: Prisma.TransactionClient | PrismaService,
+    recipientName: string,
+    forGiftId?: string,
+  ): Promise<string> {
+    for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt += 1) {
+      const slug = generateSlug(recipientName);
+      if (await this.slugIsFree(db, slug, forGiftId)) return slug;
+    }
+    throw new AppError('INTERNAL', 'Could not generate a free link');
+  }
+
   /** Runs a write that generates a slug, again if the slug happened to be taken. */
   private async withSlugRetry<T>(write: () => Promise<T>): Promise<T> {
     for (let attempt = 1; ; attempt += 1) {
@@ -426,6 +556,6 @@ export class GiftsService {
       plan: planOf(gift),
       published: gift.status === 'PUBLISHED',
     });
-    return toEditorView(gift, this.env.WEB_ORIGIN, grant);
+    return toEditorView(gift, this.env.WEB_ORIGIN, grant, new Date());
   }
 }

@@ -37,7 +37,16 @@ export interface ExperienceLabels {
 }
 
 /** Full-screen stories: cover, one card per tap, then the surprise. */
-export function GiftExperience({ gift, labels }: { gift: PublicGift; labels: ExperienceLabels }) {
+export function GiftExperience({
+  gift,
+  labels,
+  embedded = false,
+}: {
+  gift: PublicGift;
+  labels: ExperienceLabels;
+  /** Fills its container instead of the screen: the creator's preview shows it under a banner. */
+  embedded?: boolean;
+}) {
   const steps = useMemo(() => stepsOf(gift), [gift]);
   const [state, dispatch] = useReducer(
     (current: StoryState, action: StoryAction) => storyReducer(steps, current, action),
@@ -62,12 +71,14 @@ export function GiftExperience({ gift, labels }: { gift: PublicGift; labels: Exp
   }, []);
 
   if (!step) return null;
+  // Embedded in the creator's preview, the page already has its main landmark.
+  const Root = embedded ? 'div' : 'main';
   const solved = step.kind === 'card' && state.solved.includes(step.card.id);
 
   return (
-    <main
+    <Root
       lang={gift.locale}
-      className="bg-night text-paper relative mx-auto flex h-dvh max-w-md flex-col overflow-hidden select-none"
+      className={`bg-night text-paper relative mx-auto flex max-w-md flex-col overflow-hidden select-none ${embedded ? 'h-full' : 'h-dvh'}`}
     >
       {/* Progress: one segment per step */}
       <div
@@ -198,6 +209,6 @@ export function GiftExperience({ gift, labels }: { gift: PublicGift; labels: Exp
           )}
         </motion.section>
       </AnimatePresence>
-    </main>
+    </Root>
   );
 }

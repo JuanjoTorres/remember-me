@@ -3,6 +3,7 @@ import {
   CardTypeSchema,
   PlanCapabilitiesSchema,
   PlanSchema,
+  ProFeatureSchema,
   RevealTemplateSchema,
 } from './plans.js';
 import { CustomSlugSchema } from './slug.js';
@@ -118,6 +119,15 @@ export const GiftEditorViewSchema = z.object({
   senderName: z.string(),
   reveal: RevealSchema,
   cards: z.array(CardSchema),
+  /** Paid features the content uses. A free gift that has any must be paid for to be published. */
+  proFeatures: z.array(ProFeatureSchema),
+  publishedAt: z.iso.datetime().nullable(),
+  /** Until when a published gift can still be corrected. `null` for a draft. */
+  editableUntil: z.iso.datetime().nullable(),
+  /** The correction window is over: nothing can be edited any more, only deleted. */
+  locked: z.boolean(),
+  /** When the gift and its files are deleted. `null` means never (a paid gift). */
+  expiresAt: z.iso.datetime().nullable(),
   /** A paid custom link could not be applied (it was taken); the creator may choose another. */
   customSlugPending: z.boolean(),
   /** Public URL of the gift. Only meaningful once published. */

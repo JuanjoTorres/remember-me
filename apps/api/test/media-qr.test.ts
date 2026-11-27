@@ -150,8 +150,14 @@ describe('media and qr', () => {
   });
 
   describe('audio upload', () => {
-    it('asks a free gift for premium', async () => {
-      const { grant } = await setup();
+    it('lets a draft record a voice note before anything is paid', async () => {
+      const { grant, client } = await setup();
+      const uploaded = (await upload(grant, 'audio', M4A, 'voice.m4a').expect(201)).body;
+      await client.addCard({ type: 'AUDIO_NOTE', payload: { audioUrl: uploaded.url } }).expect(201);
+    });
+
+    it('asks a published free gift for premium', async () => {
+      const { grant } = await setup({ published: true });
       const response = await upload(grant, 'audio', M4A, 'voice.m4a').expect(402);
       expect(response.body).toMatchObject({
         code: 'PREMIUM_REQUIRED',
@@ -362,7 +368,7 @@ describe('media and qr', () => {
         expect((await http().get(`/public/gifts/${slug}`).expect(200)).body.slug).toBe(custom);
       }
       // The old link cannot be taken by somebody else.
-      const availability = await http().get('/gifts/slug-availability').query({ slug: gift.slug });
+      const availability = await http().get('/gifts/check-slug').query({ slug: gift.slug });
       expect(availability.body).toMatchObject({ available: false, reason: 'TAKEN' });
     });
 

@@ -37,7 +37,14 @@ export class MediaService implements OnModuleInit {
     file: Buffer | undefined,
   ): Promise<MediaUploadResponse> {
     if (!file || file.length === 0) throw new AppError('VALIDATION_ERROR', 'A file is required');
-    if (kind === 'AUDIO' && !PLAN_CAPABILITIES[grant.plan].cardTypes.includes('AUDIO_NOTE')) {
+    // A draft may use every feature; the plan is settled when it is published. From then on a
+    // free gift cannot gain a voice note.
+    const planApplies = grant.published;
+    if (
+      kind === 'AUDIO' &&
+      planApplies &&
+      !PLAN_CAPABILITIES[grant.plan].cardTypes.includes('AUDIO_NOTE')
+    ) {
       throw new AppError('PREMIUM_REQUIRED', 'Voice notes are part of the full experience', {
         capability: 'AUDIO_UPLOAD',
       });

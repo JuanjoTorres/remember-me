@@ -188,4 +188,15 @@ describe('GiftExperience', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Watch again' }));
     expect(await screen.findByRole('heading', { name: 'For Sarah' })).toBeInTheDocument();
   });
+
+  it('is the main landmark of the recipient page, but not when embedded in the preview', () => {
+    const { unmount } = render(<GiftExperience gift={gift('BASIC')} labels={labels} />);
+    expect(screen.getByRole('main')).toHaveClass('h-dvh');
+    unmount();
+
+    // The preview page already has its own main landmark and gives the experience its height.
+    render(<GiftExperience embedded gift={gift('BASIC')} labels={labels} />);
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'For Sarah' })).toBeInTheDocument();
+  });
 });

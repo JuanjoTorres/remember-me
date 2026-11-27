@@ -74,12 +74,39 @@ Read from Stripe for the two price ids and cached in memory per instance for `PR
 
 Every step after the log must therefore be safe to repeat.
 
+## Simultaneous checkouts
+
+The Stripe session is created after the transaction that reserves the order, so for a moment an order
+exists without its checkout page.
+
+- A second request for the same purchase in that moment (a double tap, a second tab) must not replace it,
+  or one purchase would get two payable sessions. An order with no `checkoutUrl`, the same custom link and
+  younger than `SESSION_IN_FLIGHT_MS` is taken to be in flight: the second request waits for its page
+  (`checkoutUrlOf`) and returns the same one.
+- If Stripe fails, the order is set to `EXPIRED` at once, so the customer can try again immediately and a
+  request that was waiting stops waiting. A waiting request whose order failed or took too long opens the
+  checkout itself, once; it never answers `CONFLICT`, which the web shows as "already paid".
+- A request for something else (another custom link) replaces the order in flight. When Stripe then
+  answers the overtaken request, its order is no longer `PENDING`: the session it just created is expired
+  at Stripe and the request fails, so the gift keeps one payable session.
+- An order without a page that is older than `SESSION_IN_FLIGHT_MS` is a request that died, and is replaced.
+
+On 2026-11-25 the test of the double tap failed once: before, the second request replaced the order
+whenever it arrived inside that moment.
+
 ## Settle and announce
 
-`settle` records `paidAt`, session id, amount and currency as reported by Stripe, then either flags
-`REFUND_DUE` (second payment for the gift) or sets `PAID` and calls `announce`. `announce` publishes
-`payment.succeeded` with the order id, gift id and the custom slug taken from our own order, never from
-the provider's payload.
+`settle` records `paidAt`, session id, amount, currency and the customer's email as reported by Stripe
+(`customer_details.email`, read by `emailOf` in the gateway; kept in `payment_orders.customer_email`),
+then either flags `REFUND_DUE` (second payment for the gift) or sets `PAID` and calls `announce` with the
+updated order. `announce` publishes `payment.succeeded` with the order id, gift id, custom slug and
+customer email, all taken from our own order, never straight from the provider's payload. The gifts
+module keeps the email for the anniversary email; payments does nothing else with it.
+
+When a gift is deleted (`gift.deleted`), `forgetCustomer` sets `customer_email` to `NULL` on every order
+of that gift. The orders themselves stay: they are the record of the payment. The privacy page promises
+that the address is deleted with the gift, so a new place that stores it must be cleared here too. An order that ends as `REFUND_DUE` never keeps
+the address either (`settle`, `markRefundDue`): the refund is made in Stripe.
 
 ## Confirm (`confirm`)
 
@@ -109,7 +136,10 @@ Called by the web return page so a late or lost webhook does not strand a paying
 and answers the session, expire, retrieve and price endpoints. A real Stripe SDK client pointed at it
 replaces `STRIPE_CLIENT` through `overrideProvider`. Webhook deliveries are signed with the SDK's test
 header helper and the secret from `apps/api/test/setup.ts`. Sets `paidSessions` and `expiredSessions`
-control what a retrieve returns. `STRIPE_API_BASE_URL` does the same for the browser tests
+control what a retrieve returns. Tests about simultaneous requests never use a delay:
+`holdNextSessionCreation()` makes the server keep the next session creation unanswered until the test
+calls `release()`, and `nextRequestWaitingForAPage()` tells when a second request has started waiting.
+`STRIPE_API_BASE_URL` does the same for the browser tests
 (`apps/web/e2e/fake-stripe.mjs`); the env schema refuses it in staging and production.
 
 ## Decisions

@@ -3,7 +3,13 @@
 ## 1. Visión del Producto y Dominio
 - **Nombre de marca:** `kardoo.me` (definido una sola vez en `apps/web/src/features/shared/brand.ts`). El proyecto nació como `remember.me`; ese nombre se conserva solo en identificadores internos: repositorio, scope `@remember-me/*`, base de datos y bucket local.
 - **Concepto:** Plataforma mobile-first de regalos digitales interactivos mediante código QR. El creador diseña una experiencia inmersiva tipo *Instagram Stories* con fotos, mensajes, notas de voz y una pregunta trivia opcional, culminando en una revelación sorpresa interactiva (efecto *rasca y gana*, billete de viaje o caja regalo).
-- **Estructura de URLs del QR:** Rutas humanas y confiables bajo `/for/[slug]` (ej. `kardoo.me/for/sarah-x9k`).
+- **Estructura de URLs del QR:** Rutas humanas y confiables bajo `/for/[slug]` (ej. `kardoo.me/for/sarah-x9k2bd7m`). Todo slug termina en un sufijo alfanumérico: 8 caracteres aleatorios en los generados y al menos 4 en los personalizados (extra de pago). Los enlaces no deben poder descubrirse probando combinaciones: la API limita por cliente los enlaces inexistentes que se abren y las comprobaciones de disponibilidad (decisión del propietario, 2026-11-24). Las páginas de regalo nunca se indexan.
+- **Reglas de negocio (decisión del propietario, 2026-11-24):**
+  - **Edición libre, pago único al publicar:** un borrador puede usar cualquier función (tarjetas ilimitadas, notas de voz, trivia, plantillas premium) sin bloqueos ni redirecciones a Stripe; las opciones de pago se marcan con la insignia `PRO`. El único muro de pago está al publicar desde la vista previa (`/create/[giftId]/preview`): sin funciones `PRO` se publica gratis con marca de agua; con ellas se abre `PremiumUpgradeSheet` (pago único, con el enlace personalizado como order bump opcional) y el pago publica el regalo.
+  - **Anti-reutilización:** al publicar queda fijado el nombre del destinatario; el resto se puede corregir durante 48 horas y después cualquier edición devuelve `GIFT_LOCKED`. El borrado irreversible (con doble confirmación `DELETE` / `BORRAR`) siempre está disponible y elimina también los archivos en R2.
+  - **Caducidad:** borradores, 7 días desde su creación; regalos gratuitos, 1 año desde su publicación; regalos de pago, nunca. Un cron diario en `apps/api` elimina los vencidos con sus archivos.
+  - **Email de aniversario:** un año después de publicar un regalo de pago se envía un único email al comprador (el email llega en `PaymentSucceededEvent`).
+  - Los plazos y límites viven solo en `packages/shared-types` (`plans.ts`, `lifecycle.ts`, `slug.ts`); el detalle está en `.claude/skills/backend/references/gifts.md`.
 
 ## 2. Stack y Estructura del Monorepo
 - **Monorepo:** `pnpm workspaces` + `Turborepo` bajo la carpeta raíz `remember-me/`.
@@ -18,7 +24,7 @@
 - **Aislamiento del módulo `payments` (preparado para futura extracción a microservicio/pod independiente):**
   1. Sin `FOREIGN KEY` en Prisma/PostgreSQL entre `payment_orders` y `gifts` (solo campo `giftId: String` sin relación `@relation`).
   2. Comunicación exclusivamente por eventos usando una interfaz `EventBus` abstraída (implementación local con `@nestjs/event-emitter` seleccionada vía variable de entorno `EVENT_BUS_DRIVER=memory|redis`).
-  3. El webhook de Stripe en `payments` emite `PaymentSucceededEvent`; el módulo `gifts` se suscribe para activar `isPremium = true` y publicar el regalo.
+  3. El webhook de Stripe en `payments` emite `PaymentSucceededEvent` (con el `customerEmail` del comprador); el módulo `gifts` se suscribe para activar `isPremium = true`, quitar la caducidad y publicar el regalo.
   4. Idempotencia obligatoria en webhooks guardando `eventId` en la tabla `payment_webhook_logs`.
 - **Multimedia y QR:** Optimización de imágenes a WebP con `sharp`, subida de imágenes y audios (M4A/MP3) a almacenamiento compatible S3 (**Cloudflare R2**), y generación de códigos QR dinámicos apuntando a `<WEB_ORIGIN>/for/[slug]` (en producción `https://kardoo.me/for/[slug]`).
 
@@ -29,6 +35,7 @@
   - Precarga en segundo plano (`usePreloadMedia`) de imágenes y audios de las tarjetas siguientes mientras el usuario visualiza la actual.
   - Compresión de imágenes en cliente antes de subirlas desde `gift-creator`.
   - Flujo de creación sin registro obligatorio inicial (se captura el email en Stripe Checkout).
+  - El token de edición viaja en el fragmento de la URL o en el almacenamiento del navegador y se envía en la cabecera `x-edit-token`; nunca forma parte de la ruta de una página ni de un endpoint.
 - **Entornos:** Diferenciar `NEXT_PUBLIC_API_URL` (navegador móvil) e `INTERNAL_API_URL` (comunicación interna SSR entre pods).
 
 ## 5. Convenciones de Código y Calidad

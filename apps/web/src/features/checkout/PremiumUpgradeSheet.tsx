@@ -1,7 +1,7 @@
 'use client';
 
 import type { GiftEditorView } from '@remember-me/shared-types';
-import { PLAN_CAPABILITIES, slugify } from '@remember-me/shared-types';
+import { FREE_GIFT_TTL_YEARS, PLAN_CAPABILITIES } from '@remember-me/shared-types';
 import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -10,7 +10,7 @@ import { BRAND_NAME } from '@/features/shared/brand';
 import { formatPrice } from '@/features/shared/format';
 import { Button } from '@/features/shared/ui/Button';
 import { Sheet } from '@/features/shared/ui/Sheet';
-import { createCheckoutSession, getPrices, getSlugAvailability } from './api';
+import { checkSlug, createCheckoutSession, getPrices } from './api';
 import { CustomSlugField, type SlugState } from './CustomSlugField';
 import type { UpgradeReason } from './upgrade-triggers';
 
@@ -21,11 +21,14 @@ interface PremiumUpgradeSheetProps {
   gift: GiftEditorView;
   /** Runs a call with the gift's grant, refreshing the grant once if it expired. */
   withGrant: <T>(call: (grant: string) => Promise<T>) => Promise<T>;
+  /** Page Stripe sends the creator back to if they give up. Defaults to the editor. */
+  cancelPath?: string;
   /** Where the browser goes for payment. Replaceable in tests. */
   redirect?: (url: string) => void;
 }
 
 const FEATURES = [
+  'featureForever',
   'featureCards',
   'featureVoice',
   'featureTrivia',
@@ -40,6 +43,7 @@ export function PremiumUpgradeSheet({
   onClose,
   gift,
   withGrant,
+  cancelPath,
   redirect = (url) => window.location.assign(url),
 }: PremiumUpgradeSheetProps) {
   const t = useTranslations('checkout');
@@ -69,8 +73,8 @@ export function PremiumUpgradeSheet({
     setError(null);
     setPaying(true);
     try {
-      const customSlug = includeSlug ? slugify(slug) : undefined;
-      if (customSlug !== undefined && !(await getSlugAvailability(customSlug)).available) {
+      const customSlug = includeSlug ? slug : undefined;
+      if (customSlug !== undefined && !(await checkSlug(customSlug)).available) {
         setSlugState('taken');
         return;
       }
@@ -81,7 +85,7 @@ export function PremiumUpgradeSheet({
           includeCustomSlug: customSlug !== undefined,
           customSlug,
           successUrl: `${origin}/create/${gift.id}/success`,
-          cancelUrl: `${origin}/create/${gift.id}`,
+          cancelUrl: `${origin}${cancelPath ?? `/create/${gift.id}`}`,
         }),
       );
       redirect(session.checkoutUrl);
@@ -100,13 +104,33 @@ export function PremiumUpgradeSheet({
         </p>
       )}
 
+      {reason === 'PRO_FEATURES' && gift.proFeatures.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-1.5" aria-label={t('proUsedLabel')}>
+          {gift.proFeatures.map((feature) => (
+            <li key={feature} className="bg-gold/25 rounded-full px-2.5 py-1 text-xs font-semibold">
+              {t(`proFeature.${feature}`, { max: PLAN_CAPABILITIES.FREE.maxCards ?? 0 })}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <ul className="mt-5 space-y-2.5">
         {FEATURES.map((feature) => (
-          <li key={feature} className="flex gap-3 text-[0.95rem]">
+          <li
+            key={feature}
+            className={`flex gap-3 text-[0.95rem] ${feature === 'featureForever' ? 'font-semibold' : ''}`}
+          >
             <span aria-hidden className="text-ember font-semibold">
               ✓
             </span>
-            {t(feature)}
+            <span>
+              {t(feature)}
+              {feature === 'featureForever' && (
+                <span className="text-ink-soft block text-sm font-normal">
+                  {t('featureForeverHint', { years: FREE_GIFT_TTL_YEARS })}
+                </span>
+              )}
+            </span>
           </li>
         ))}
       </ul>
@@ -117,11 +141,7 @@ export function PremiumUpgradeSheet({
             type="checkbox"
             className="accent-ember mt-1 size-5 shrink-0"
             checked={includeSlug}
-            onChange={(event) => {
-              setIncludeSlug(event.target.checked);
-              // Suggest a link from the name as it is now, the first time the extra is ticked.
-              if (event.target.checked && slug === '') setSlug(slugify(gift.recipientName));
-            }}
+            onChange={(event) => setIncludeSlug(event.target.checked)}
           />
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline justify-between gap-3">
@@ -139,7 +159,8 @@ export function PremiumUpgradeSheet({
           <div className="mt-4">
             <CustomSlugField
               host={host}
-              value={slug}
+              // Suggests a link from the recipient's name, as it is when the extra is ticked.
+              initialName={gift.recipientName}
               onChange={(next, state) => {
                 setSlug(next);
                 setSlugState(state);

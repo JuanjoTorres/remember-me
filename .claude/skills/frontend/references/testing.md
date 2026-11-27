@@ -46,24 +46,27 @@ object: they must work without providers, and the test proves it.
 
 ## Test files
 
-| File                                                                | Covers                                                                                                 |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `apps/web/src/config/env.test.ts`                                   | Env parsing: trailing slash, missing public URL, non-http internal URL                                 |
-| `apps/web/src/i18n/locale.test.ts`                                  | `resolveLocale`: cookie, header weights, fallback                                                      |
-| `apps/web/test/messages.test.ts`                                    | Same keys and same placeholders in English and Spanish                                                 |
-| `apps/web/test/recipient-boundaries.test.ts`                        | The lint rule: recipient files cannot import editor, checkout, Stripe (runs in the node environment)   |
-| `apps/web/src/features/shared/ui/Sheet.test.tsx`                    | Focus in and back, focus left alone when already inside, Tab trap, only the top sheet reacts to Escape |
-| `apps/web/src/features/gift-creator/components/GiftEditor.test.tsx` | Every upgrade trigger, server refusal, publish rules, premium gift, QR after publishing                |
-| `apps/web/src/features/gift-creator/components/SavedInput.test.tsx` | Save on blur only when changed; typed text wins over a stale server value                              |
-| `apps/web/src/features/gift-creator/card-form.test.ts`              | `toCardInput` against `CardInputSchema`; `fitWithin`                                                   |
-| `apps/web/src/features/gift-creator/storage.test.ts`                | Edit link round trip, saved gifts, held vs stored token, storage unavailable                           |
-| `apps/web/src/features/checkout/upgrade-triggers.test.ts`           | `upgradeReasonFor` for every intent and plan                                                           |
-| `apps/web/src/features/checkout/PremiumUpgradeSheet.test.tsx`       | Reasons, prices from the API, custom link preview and blocking, checkout request, failure              |
-| `apps/web/src/features/checkout/useGiftPaymentStatus.test.ts`       | Polling to confirmed, delayed, repeated failure, stop on unmount (fake timers)                         |
-| `apps/web/src/features/gift-experience/stories.test.ts`             | Step order, navigation bounds, trivia gate, restart, `mediaAhead`                                      |
-| `apps/web/src/features/gift-experience/usePreloadMedia.test.ts`     | Next media is requested early and never twice                                                          |
-| `apps/web/src/features/gift-experience/GiftExperience.test.tsx`     | Whole recipient flow per reveal template, watermark, confetti, reduced motion, replay                  |
-| `apps/web/src/features/gift-reveal/scratch.test.ts`                 | `clearedRatio`                                                                                         |
+| File                                                                         | Covers                                                                                                                                             |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/config/env.test.ts`                                            | Env parsing: trailing slash, missing public URL, non-http internal URL                                                                             |
+| `apps/web/src/i18n/locale.test.ts`                                           | `resolveLocale`: cookie, header weights, fallback                                                                                                  |
+| `apps/web/test/messages.test.ts`                                             | Same keys and same placeholders in English and Spanish                                                                                             |
+| `apps/web/test/recipient-boundaries.test.ts`                                 | The lint rule: recipient files cannot import editor, checkout, Stripe (runs in the node environment)                                               |
+| `apps/web/src/features/shared/ui/Sheet.test.tsx`                             | Focus in and back, focus left alone when already inside, Tab trap, only the top sheet reacts to Escape                                             |
+| `apps/web/src/features/gift-creator/components/GiftEditor.test.tsx`          | Free editing of a draft, PRO badges and summary, limits of a published free gift, server refusals, locking after delivery, the danger zone         |
+| `apps/web/src/app/(main)/create/[giftId]/published/PublishedScreen.test.tsx` | The final screen of a free gift: link and QR, expiry and upgrade, paid gift, locked gift, a draft opened by hand, no access                        |
+| `apps/web/src/app/(main)/create/[giftId]/preview/PreviewScreen.test.tsx`     | The preview: banner, the gift's language, free publication, the payment sheet for PRO features, incomplete and failed publication; `toPreviewGift` |
+| `apps/web/src/features/gift-creator/components/SavedInput.test.tsx`          | Save on blur only when changed; typed text wins over a stale server value                                                                          |
+| `apps/web/src/features/gift-creator/card-form.test.ts`                       | `toCardInput` against `CardInputSchema`; `fitWithin`                                                                                               |
+| `apps/web/src/features/gift-creator/storage.test.ts`                         | Edit link round trip, saved gifts, held vs stored token, storage unavailable                                                                       |
+| `apps/web/src/features/shared/format.test.ts`                                | Dates on the clock of the device's time zone, in the page's language                                                                               |
+| `apps/web/src/features/checkout/upgrade-triggers.test.ts`                    | `upgradeReasonFor` for every intent and plan                                                                                                       |
+| `apps/web/src/features/checkout/PremiumUpgradeSheet.test.tsx`                | Reasons, prices from the API, custom link preview and blocking, checkout request, failure                                                          |
+| `apps/web/src/features/checkout/useGiftPaymentStatus.test.ts`                | Polling to confirmed, delayed, repeated failure, stop on unmount (fake timers)                                                                     |
+| `apps/web/src/features/gift-experience/stories.test.ts`                      | Step order, navigation bounds, trivia gate, restart, `mediaAhead`                                                                                  |
+| `apps/web/src/features/gift-experience/usePreloadMedia.test.ts`              | Next media is requested early and never twice                                                                                                      |
+| `apps/web/src/features/gift-experience/GiftExperience.test.tsx`              | Whole recipient flow per reveal template, watermark, confetti, reduced motion, replay                                                              |
+| `apps/web/src/features/gift-reveal/scratch.test.ts`                          | `clearedRatio`                                                                                                                                     |
 
 ## Writing a component test
 
@@ -94,13 +97,13 @@ object: they must work without providers, and the test proves it.
 
 Files in `apps/web/e2e`:
 
-| File                   | Holds                                                                                                                                                                                                                  |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gift-flow.spec.ts`    | Free flow: create, upload a photo, free limits open the sheet, publish, QR download, edit link in a clean browser, no access without it, the recipient in another locale, the recipient bundle check, the Spanish 404. |
-| `premium-flow.spec.ts` | Upgrade with a custom link, waiting page, forged and duplicated webhooks, both QR formats, premium editor, trivia, scratching by touch and by mouse; and a payment confirmed with no webhook at all.                   |
-| `helpers.ts`           | `startGift`, `addTextCard`, `fillSurprise`, `lastCheckoutSession`, `deliverPaidWebhook`, `recordScripts`.                                                                                                              |
-| `fixtures.ts`          | `PHOTO`: a small valid PNG buffer for uploads.                                                                                                                                                                         |
-| `fake-stripe.mjs`      | Answers the Stripe calls the API makes; Checkout "completes" by returning the success URL. Test hooks under `/__sessions` list sessions and mark one paid.                                                             |
+| File                   | Holds                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gift-flow.spec.ts`    | Free flow: create, upload a photo, try PRO features without any paywall and take them out again, preview, publish free, QR download, fixed recipient name, limits of a published free gift, edit link in a clean browser, no access without it, the recipient in another locale, the recipient bundle check, the Spanish 404, and the irreversible deletion (link and photo gone).   |
+| `premium-flow.spec.ts` | A free draft with trivia and scratch card, the preview, the payment asked for on publishing, the custom link with its ending, waiting page, forged and duplicated webhooks, both QR formats, suggestions for the taken link, premium editor, trivia, scratching by touch and by mouse; and a payment confirmed with no webhook at all, started from the upgrade link of the preview. |
+| `helpers.ts`           | `startGift`, `addTextCard`, `fillSurprise`, `lastCheckoutSession`, `deliverPaidWebhook`, `recordScripts`.                                                                                                                                                                                                                                                                            |
+| `fixtures.ts`          | `PHOTO`: a small valid PNG buffer for uploads.                                                                                                                                                                                                                                                                                                                                       |
+| `fake-stripe.mjs`      | Answers the Stripe calls the API makes; Checkout "completes" by returning the success URL. Test hooks under `/__sessions` list sessions and mark one paid.                                                                                                                                                                                                                           |
 
 ## Writing an e2e flow
 

@@ -64,6 +64,7 @@ export class StripePaymentGateway extends PaymentGateway {
       expired: session.status === 'expired',
       amountTotal: session.amount_total ?? null,
       currency: session.currency ?? null,
+      customerEmail: emailOf(session),
     };
   }
 
@@ -112,5 +113,11 @@ function sessionFacts(session: Stripe.Checkout.Session) {
     orderId: session.metadata?.['orderId'] ?? session.client_reference_id ?? null,
     amountTotal: session.amount_total ?? null,
     currency: session.currency ?? null,
+    customerEmail: emailOf(session),
   };
+}
+
+/** The email typed in Checkout; no account exists, so this is the only contact of the buyer. */
+function emailOf(session: Stripe.Checkout.Session): string | null {
+  return session.customer_details?.email ?? session.customer_email ?? null;
 }

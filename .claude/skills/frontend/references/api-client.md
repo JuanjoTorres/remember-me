@@ -57,6 +57,7 @@ Codes the UI reacts to today:
 | Code                | Where                                                           | Reaction                                          |
 | ------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
 | `PREMIUM_REQUIRED`  | `useGiftEditor`, `useUpload` in `MediaInputs.tsx`, `SharePanel` | Opens the upgrade sheet with the matching reason  |
+| `GIFT_LOCKED`       | `useGiftEditor`                                                 | Message in the sticky bar; the gift is reloaded   |
 | `UNAUTHORIZED`      | `withGrant`; `GiftEditor` on load                               | Refresh the grant once; drop a refused link token |
 | `NOT_FOUND`         | `GiftEditor` on load                                            | "No access" screen                                |
 | `UNSUPPORTED_MEDIA` | `useUpload`                                                     | Message per media kind                            |
@@ -93,7 +94,7 @@ gift and the edit token, which is returned only that once.
 | Function                | Endpoint                          | Auth  |
 | ----------------------- | --------------------------------- | ----- |
 | `getPrices`             | `GET /payments/prices`            | none  |
-| `getSlugAvailability`   | `GET /gifts/slug-availability`    | none  |
+| `checkSlug`             | `GET /gifts/check-slug`           | none  |
 | `createCheckoutSession` | `POST /payments/checkout-session` | grant |
 | `confirmPayment`        | `POST /payments/confirm`          | grant |
 

@@ -22,6 +22,7 @@ export interface CheckoutSessionState {
   expired: boolean;
   amountTotal: number | null;
   currency: string | null;
+  customerEmail: string | null;
 }
 
 /** What the payment provider told us in a verified webhook, reduced to what this module uses. */
@@ -35,6 +36,7 @@ export type PaymentEvent =
       orderId: string | null;
       amountTotal: number | null;
       currency: string | null;
+      customerEmail: string | null;
     };
 
 /** The payment provider, as this module needs it. Stripe is the only implementation. */

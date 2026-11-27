@@ -15,39 +15,61 @@ optional trivia question, ending in an interactive surprise reveal.
 ## v1 flows
 
 1. **Create a gift** (`/create`): add cards, choose a reveal template, write the reveal content. Images are
-   compressed in the browser before upload. The draft is saved on the server from the first step.
-2. **Come back to a gift:** creating a gift returns a secret edit link (`/create/[giftId]?token=…`). The token
+   compressed in the browser before upload. The draft is saved on the server from the first step. Nothing
+   is blocked or paid while editing: any number of cards, voice notes, trivia and premium reveals can be
+   tried on a free draft. Those options carry a `PRO` badge and the editor sums up the ones in use.
+2. **Come back to a gift:** creating a gift returns a secret edit link (`/create/[giftId]#token=…`). The token
    is stored on the device and shown to the creator to save. All write endpoints require it.
-3. **Publish for free:** a FREE gift can be published and gets a QR code, within the free limits.
-4. **Upgrade** (`PremiumUpgradeSheet`): opens when the creator tries to add a voice note, a trivia card, a
-   fourth card, a premium reveal template, or taps "Publish without watermark". Optional order bump for a
-   custom slug with a live preview of `kardoo.me/for/[slug]`. Redirects to Stripe Checkout.
-5. **Payment return** (`/create/[giftId]/success`): polls the gift until the webhook has been processed, then
-   shows the final QR download (SVG/PNG).
+3. **Preview** (`/create/[giftId]/preview`): the whole experience as the recipient will get it, under a
+   "Preview — not published yet" banner. Needs the edit token.
+4. **Publish** ("Publish and get QR", on the preview): a gift that uses no PRO feature is published free,
+   with watermark, and its QR code is shown. A gift that uses PRO features (more cards than the free
+   plan, a voice note, a trivia, a premium reveal) opens `PremiumUpgradeSheet`: one payment in Stripe
+   Checkout, with the custom link as an optional order bump. A free gift can also be upgraded on purpose
+   (no watermark, custom link, no expiry).
+5. **Payment return** (`/create/[giftId]/success`): polls the gift until the webhook has been processed,
+   which also publishes it, then shows the final QR download (SVG/PNG). The creator does not go back
+   through the editor.
 6. **Experience the gift** (`/for/[slug]`): full-screen stories, background preload of the next cards' media,
-   optional trivia, then the reveal (scratch card, ticket or gift box) with confetti.
+   optional trivia, then the reveal (scratch card, ticket or gift box) with confetti. Never indexed.
+7. **After delivery:** publishing fixes the recipient's name. Typos and photos can be corrected for 48
+   hours; after that the gift is locked, so that it cannot be reused for someone else. It can always be
+   deleted for good from the editor's danger zone (typed confirmation), which also removes its files.
+8. **A year later:** the buyer of a paid gift gets one email inviting them to relive it and to create a
+   new one.
 
 ## Plans
 
 Prices live in Stripe (`STRIPE_PRICE_ID_PREMIUM`, `STRIPE_PRICE_ID_CUSTOM_SLUG`); the UI reads amounts from
 the API, never from constants. Limits live in one `PLAN_CAPABILITIES` contract in `shared-types`.
 
-|                                    | FREE         | PREMIUM (one-time, e.g. 4.99 €)      |
-| ---------------------------------- | ------------ | ------------------------------------ |
-| Cards per gift                     | 3            | Unlimited                            |
-| Card types                         | `PHOTO_TEXT` | `PHOTO_TEXT`, `AUDIO_NOTE`, `TRIVIA` |
-| Reveal templates                   | Basic        | `SCRATCH_CARD`, `TICKET`, `GIFT_BOX` |
-| Watermark "Created with kardoo.me" | Yes          | No                                   |
-| QR download                        | Standard PNG | High quality SVG/PNG                 |
+|                                    | FREE                    | PREMIUM (one-time, e.g. 4.99 €)      |
+| ---------------------------------- | ----------------------- | ------------------------------------ |
+| Cards per gift                     | 3                       | Unlimited                            |
+| Card types                         | `PHOTO_TEXT`            | `PHOTO_TEXT`, `AUDIO_NOTE`, `TRIVIA` |
+| Reveal templates                   | Basic                   | `SCRATCH_CARD`, `TICKET`, `GIFT_BOX` |
+| Watermark "Created with kardoo.me" | Yes                     | No                                   |
+| QR download                        | Standard PNG            | High quality SVG/PNG                 |
+| Kept online                        | 1 year from publication | Forever                              |
 
-Order bump `CUSTOM_SLUG` (e.g. +1.99 €): the creator chooses the slug instead of the generated one.
-Only available together with PREMIUM in the same checkout.
+The plan limits apply to published gifts. A draft may use everything; what it uses decides at publication
+whether it must be paid for. A draft that is never published is deleted 7 days after it was started.
+
+Order bump `CUSTOM_SLUG` (e.g. +1.99 €): the creator chooses the name in the link instead of the
+generated one. Only available together with PREMIUM in the same checkout.
+
+Every link ends with a code: 8 random characters for generated links (`laura-x9k2bd7m`), and at least 4,
+random or typed by the creator, for custom ones (`laura-x9k2`). It avoids collisions and keeps a gift from
+being found by trying names. Trying links is also throttled per client: a handful of links that lead
+nowhere, and every lookup of that client is refused for ten minutes. `GET /gifts/check-slug` reports availability and proposes three free alternatives for a
+taken link.
 
 ## Non-goals for v1
 
 - User accounts, login, magic links, a "my gifts" dashboard.
-- Transactional email sent by us (Stripe sends the receipt; the edit link is shown on screen).
-- Video cards, more than one trivia question per gift, scheduled delivery, gift expiry.
+- Email sent by us other than the anniversary email (Stripe sends the receipt; the edit link is shown on
+  screen).
+- Video cards, more than one trivia question per gift, scheduled delivery.
 - Refund handling in-app (done from the Stripe Dashboard), invoices, coupons.
 - Kubernetes manifests, Redis event bus in production (the driver exists, compose runs `memory`).
 - Analytics, admin back office, content moderation tooling.
@@ -55,33 +77,40 @@ Only available together with PREMIUM in the same checkout.
 ## Data model sketch
 
 - `gifts`: `id`, `slug` (unique), `editTokenHash`, `status` (`DRAFT` | `PUBLISHED`), `isPremium`,
-  `revealTemplate`, `revealPayload` (JSON: title, message, optional image), `locale`, timestamps.
+  `revealTemplate`, `revealPayload` (JSON: title, message, optional image), `locale`, `publishedAt`,
+  `lockedAt`, `expiresAt` (null = never), `customerEmail`, `anniversaryEmailSentAt`, timestamps.
 - `gift_cards`: `id`, `giftId` (FK), `position`, `type` (`PHOTO_TEXT` | `AUDIO_NOTE` | `TRIVIA`),
   `payload` (JSON validated with Zod per type), media keys.
 - `media_assets`: `id`, `giftId` (plain string, no FK), `kind` (`IMAGE` | `AUDIO`), `storageKey`,
   `contentType`, `bytes`, `status`.
 - `payment_orders`: `id`, `giftId` (plain string, **no relation**), `stripeSessionId` (unique), `status`,
-  `amountTotal`, `currency`, `includeCustomSlug`, `customSlug`, timestamps.
+  `amountTotal`, `currency`, `includeCustomSlug`, `customSlug`, `customerEmail`, timestamps.
 - `payment_webhook_logs`: `eventId` (unique), `type`, `processedAt`.
 
 ## Backend rules
 
 - Modules `gifts`, `media`, `qr`, `payments`. No module imports another module's services or repositories;
   an architecture test fails the build if one does. Cross-module communication goes through `EventBus`.
-- `gifts` enforces plan limits on card create/update and on reveal template selection, and rejects with the
-  typed error `PREMIUM_REQUIRED` (with the capability that was hit).
+- `gifts` does not limit a draft. On publication a free gift that uses paid features is rejected with the
+  typed error `PREMIUM_REQUIRED` (capability `PRO_FEATURES` and the list of features). On a published gift
+  the plan limits apply to card creation and reveal template selection (`PREMIUM_REQUIRED` with the
+  capability that was hit).
+- `gifts` refuses edits of a delivered gift with `GIFT_LOCKED`: the recipient's name from publication,
+  everything 48 hours later.
+- Two daily jobs in `gifts` (`@nestjs/schedule`): delete expired gifts with their files, and send the
+  anniversary email through the configured mail driver (`MAIL_DRIVER`, Resend).
 - `payments`:
   - `POST /payments/checkout-session` `{ giftId, includeCustomSlug, customSlug?, successUrl, cancelUrl }`:
     Stripe Checkout, `mode=payment`, EUR, dynamic payment methods, one or two `line_items`, data in
     `metadata`. `successUrl`/`cancelUrl` must belong to the configured web origin.
   - `POST /payments/webhook`: verifies the signature with `STRIPE_WEBHOOK_SECRET` on the raw body, inserts
     `eventId` into `payment_webhook_logs` (duplicate → 200 and no effect), publishes
-    `PaymentSucceededEvent { giftId, orderId, customSlug? }`.
+    `PaymentSucceededEvent { giftId, orderId, customSlug?, customerEmail? }`.
   - `GET /payments/prices`: amounts and currency of the two prices, read from Stripe and cached.
-- `gifts` subscribes to `PaymentSucceededEvent`: sets `isPremium = true`, applies `customSlug`, publishes the
-  gift. The handler is idempotent.
+- `gifts` subscribes to `PaymentSucceededEvent`: sets `isPremium = true`, removes the expiry, keeps the
+  buyer's email, applies `customSlug`, publishes the gift. The handler is idempotent.
 - **Custom slug availability:** `payments` cannot ask `gifts` directly. The web checks availability with
-  `GET /gifts/slug-availability` before checkout. If the slug was taken in the meantime, `gifts` keeps the
+  `GET /gifts/check-slug` before checkout. If the slug was taken in the meantime, `gifts` keeps the
   generated slug, still upgrades the gift and flags `customSlugPending` so the creator can pick another one
   for free from the editor.
 - `media`: image → WebP with sharp; audio M4A/MP3 stored as is; size and type limits; upload to
@@ -99,7 +128,7 @@ Only available together with PREMIUM in the same checkout.
 
 ## External dependencies
 
-Stripe (Checkout, webhooks), Cloudflare R2 (MinIO locally), PostgreSQL.
+Stripe (Checkout, webhooks), Cloudflare R2 (S3Mock locally), PostgreSQL, Resend (anniversary email; optional).
 
 ## Risks
 
@@ -115,10 +144,10 @@ Stripe (Checkout, webhooks), Cloudflare R2 (MinIO locally), PostgreSQL.
 
 ## Open questions
 
-Questions 1, 2 and 4 were built as assumed below and still need the owner's confirmation.
+Questions 2 and 4 were built as assumed below and still need the owner's confirmation.
 
-1. Can a FREE gift be published at all, or is it preview-only until payment? This spec assumes it **can be
-   published** with limits and watermark (the "Publish without watermark" trigger implies it).
+1. Answered on 2026-11-24: a FREE gift that uses no paid feature is published free, with limits and
+   watermark; one that uses paid features is paid for when it is published.
 2. Which reveal is the "basic" FREE template? This spec assumes a simple tap-to-open card, separate from
    the three premium templates.
 3. Final prices and Stripe products are created by the account owner; 4.99 € and 1.99 € are examples.

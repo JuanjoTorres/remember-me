@@ -1,7 +1,6 @@
 'use client';
 
 import type { GiftEditorView, QrFormat } from '@remember-me/shared-types';
-import { slugify } from '@remember-me/shared-types';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { CustomSlugField, type SlugState } from '@/features/checkout/CustomSlugField';
@@ -163,7 +162,6 @@ function PendingSlug({ gift, onChangeSlug }: Pick<SharePanelProps, 'gift' | 'onC
       <p className="text-ink-soft mt-1 mb-3 text-sm leading-relaxed">{t('pendingSlugText')}</p>
       <CustomSlugField
         host={new URL(gift.publicUrl).host}
-        value={slug}
         onChange={(next, nextState) => {
           setSlug(next);
           setState(nextState);
@@ -175,7 +173,7 @@ function PendingSlug({ gift, onChangeSlug }: Pick<SharePanelProps, 'gift' | 'onC
         disabled={state !== 'available'}
         onClick={async () => {
           setBusy(true);
-          if (!(await onChangeSlug(slugify(slug)))) setState('taken');
+          if (!(await onChangeSlug(slug))) setState('taken');
           setBusy(false);
         }}
       >

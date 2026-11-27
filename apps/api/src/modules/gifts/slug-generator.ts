@@ -1,14 +1,15 @@
-import { SLUG_MAX_LENGTH, slugify } from '@remember-me/shared-types';
-import { customAlphabet } from 'nanoid';
+import {
+  GENERATED_SLUG_SUFFIX_LENGTH,
+  joinSlug,
+  randomSlugSuffix,
+  slugify,
+} from '@remember-me/shared-types';
 
-// No vowels and no look-alike characters: codes stay easy to read and never spell a word.
-const randomCode = customAlphabet('bcdfghjkmnpqrstvwxz23456789', 6);
-
-/** Human-friendly generated slug, e.g. "sarah-x9k2bd". Falls back to "gift-…" without a name. */
+/**
+ * Human-friendly generated slug, e.g. "sarah-x9k2bd7m". The link is all that protects a gift, so its
+ * random ending is long: nobody finds one by trying codes behind a name. Falls back to "gift-…"
+ * without a name.
+ */
 export function generateSlug(recipientName: string): string {
-  const code = randomCode();
-  const base = slugify(recipientName)
-    .slice(0, SLUG_MAX_LENGTH - code.length - 1)
-    .replace(/-+$/, '');
-  return `${base || 'gift'}-${code}`;
+  return joinSlug(slugify(recipientName) || 'gift', randomSlugSuffix(GENERATED_SLUG_SUFFIX_LENGTH));
 }

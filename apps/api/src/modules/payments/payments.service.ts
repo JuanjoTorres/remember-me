@@ -9,7 +9,11 @@ import type { PaymentOrder } from '../../generated/prisma/client.js';
 import { ENV } from '../../config/config.module.js';
 import type { Env } from '../../config/env.js';
 import type { GiftGrantClaims } from '../../shared/auth/gift-grant.service.js';
-import { PaymentSucceededEvent, PaymentUnappliedEvent } from '../../shared/events/contracts.js';
+import {
+  GiftDeletedEvent,
+  PaymentSucceededEvent,
+  PaymentUnappliedEvent,
+} from '../../shared/events/contracts.js';
 import { EventBus } from '../../shared/events/event-bus.js';
 import { AppError } from '../../shared/http/app-error.js';
 import { PrismaService } from '../../shared/prisma/prisma.service.js';
@@ -21,6 +25,12 @@ export const SESSION_CHECK_INTERVAL_MS = 8_000;
 const SESSION_CHECK_MEMORY = 10_000;
 /** Stripe sessions live 24 hours; an open one is handed out again for a little less than that. */
 const SESSION_REUSE_MS = 23 * 60 * 60 * 1000;
+/**
+ * How long an order without a checkout page yet is taken to be another request still creating it
+ * (a double tap, a second tab), rather than one that died half-way.
+ */
+const SESSION_IN_FLIGHT_MS = 15_000;
+const IN_FLIGHT_POLL_MS = 100;
 
 @Injectable()
 export class PaymentsService implements OnModuleInit {
@@ -40,11 +50,27 @@ export class PaymentsService implements OnModuleInit {
     this.events.subscribe(PaymentUnappliedEvent, 'payments', ({ orderId, reason }) =>
       this.markRefundDue(orderId, reason),
     );
+    this.events.subscribe(GiftDeletedEvent, 'payments', ({ giftId }) =>
+      this.forgetCustomer(giftId),
+    );
+  }
+
+  /**
+   * The gift is gone, and with it the only reason to keep its buyer's address. The orders stay
+   * (they are the record of the payment); the personal data in them does not. Running it again
+   * changes nothing.
+   */
+  async forgetCustomer(giftId: string): Promise<void> {
+    await this.prisma.paymentOrder.updateMany({
+      where: { giftId, customerEmail: { not: null } },
+      data: { customerEmail: null },
+    });
   }
 
   async createCheckoutSession(
     grant: GiftGrantClaims,
     request: CheckoutSessionRequest,
+    waited = false,
   ): Promise<CheckoutSessionResponse> {
     if (grant.giftId !== request.giftId) {
       throw new AppError('UNAUTHORIZED', 'The grant does not belong to this gift');
@@ -62,7 +88,7 @@ export class PaymentsService implements OnModuleInit {
 
     // One gift, one open checkout. The grant can be up to 30 minutes old and the creator may have
     // several tabs open, so the decision is made on this module's own orders, under a per-gift lock.
-    const { order, reused, replaced } = await this.prisma.$transaction(async (tx) => {
+    const { order, reused, inFlight, replaced } = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'checkout:' + request.giftId}))`;
       const existing = await tx.paymentOrder.findMany({
         where: { giftId: request.giftId, status: { in: ['PAID', 'PENDING'] } },
@@ -76,7 +102,18 @@ export class PaymentsService implements OnModuleInit {
           candidate.customSlug === customSlug &&
           candidate.createdAt.getTime() > Date.now() - SESSION_REUSE_MS,
       );
-      if (reusable) return { order: reusable, reused: true, replaced: [] };
+      if (reusable) return { order: reusable, reused: true, inFlight: false, replaced: [] };
+      // Another request for the same thing got here a moment ago and is still talking to Stripe.
+      // Replacing its order would open a second session for one purchase: wait for its page.
+      const beingCreated = existing.find(
+        (candidate) =>
+          candidate.checkoutUrl === null &&
+          candidate.customSlug === customSlug &&
+          candidate.createdAt.getTime() > Date.now() - SESSION_IN_FLIGHT_MS,
+      );
+      if (beingCreated) {
+        return { order: beingCreated, reused: false, inFlight: true, replaced: [] };
+      }
 
       await tx.paymentOrder.updateMany({
         where: { id: { in: existing.map((candidate) => candidate.id) } },
@@ -85,30 +122,71 @@ export class PaymentsService implements OnModuleInit {
       const created = await tx.paymentOrder.create({
         data: { giftId: request.giftId, includeCustomSlug: customSlug !== null, customSlug },
       });
-      return { order: created, reused: false, replaced: existing };
+      return { order: created, reused: false, inFlight: false, replaced: existing };
     });
     if (reused && order.checkoutUrl) return { orderId: order.id, checkoutUrl: order.checkoutUrl };
+    if (inFlight) {
+      const checkoutUrl = await this.checkoutUrlOf(order.id);
+      if (checkoutUrl) return { orderId: order.id, checkoutUrl };
+      // The other request failed or never finished. Its order is out of the way now (released, or
+      // too old to count as in flight), so this request opens the checkout itself, once.
+      if (!waited) return this.createCheckoutSession(grant, request, true);
+      throw new AppError('INTERNAL', 'The checkout could not be prepared');
+    }
 
     // Sessions of replaced orders must stop being payable, or an old tab could still charge.
     for (const old of replaced) {
       if (old.stripeSessionId) await this.gateway.expireCheckoutSession(old.stripeSessionId);
     }
-    const session = await this.gateway.createCheckoutSession({
-      orderId: order.id,
-      giftId: request.giftId,
-      priceIds: [
-        this.env.STRIPE_PRICE_ID_PREMIUM,
-        ...(customSlug !== null ? [this.env.STRIPE_PRICE_ID_CUSTOM_SLUG] : []),
-      ],
-      customSlug,
-      successUrl: request.successUrl,
-      cancelUrl: request.cancelUrl,
-    });
-    await this.prisma.paymentOrder.update({
-      where: { id: order.id },
+    let session: { id: string; url: string };
+    try {
+      session = await this.gateway.createCheckoutSession({
+        orderId: order.id,
+        giftId: request.giftId,
+        priceIds: [
+          this.env.STRIPE_PRICE_ID_PREMIUM,
+          ...(customSlug !== null ? [this.env.STRIPE_PRICE_ID_CUSTOM_SLUG] : []),
+        ],
+        customSlug,
+        successUrl: request.successUrl,
+        cancelUrl: request.cancelUrl,
+      });
+    } catch (error) {
+      // No page was created: take the order out of the way at once, so that trying again (or a
+      // request waiting for this one) starts afresh instead of waiting for a page that never comes.
+      await this.prisma.paymentOrder.updateMany({
+        where: { id: order.id, status: 'PENDING' },
+        data: { status: 'EXPIRED' },
+      });
+      throw error;
+    }
+    // Only an order that is still the open one gets the session. A request for something else
+    // (another custom link) may have replaced it while Stripe was answering.
+    const { count } = await this.prisma.paymentOrder.updateMany({
+      where: { id: order.id, status: 'PENDING' },
       data: { stripeSessionId: session.id, checkoutUrl: session.url },
     });
+    if (count === 0) {
+      // The session must not stay payable: the gift has a newer checkout.
+      await this.gateway.expireCheckoutSession(session.id);
+      throw new AppError('INTERNAL', 'This checkout was replaced by a newer one');
+    }
     return { orderId: order.id, checkoutUrl: session.url };
+  }
+
+  /**
+   * Waits for the checkout page that another request is creating for this order. Resolves to
+   * `null` when that request failed or took too long.
+   */
+  private async checkoutUrlOf(orderId: string): Promise<string | null> {
+    const deadline = Date.now() + SESSION_IN_FLIGHT_MS;
+    while (Date.now() < deadline) {
+      const order = await this.prisma.paymentOrder.findUnique({ where: { id: orderId } });
+      if (order?.checkoutUrl) return order.checkoutUrl;
+      if (!order || order.status !== 'PENDING') return null;
+      await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_POLL_MS));
+    }
+    return null;
   }
 
   /** The gift of a paid order no longer exists: flag the order so that the money is returned. */
@@ -116,7 +194,9 @@ export class PaymentsService implements OnModuleInit {
     if (!isUuid(orderId)) return;
     const { count } = await this.prisma.paymentOrder.updateMany({
       where: { id: orderId, status: 'PAID' },
-      data: { status: 'REFUND_DUE' },
+      // Nothing was delivered, so there is nothing to write to the buyer about; the refund is made
+      // in Stripe, which has the address.
+      data: { status: 'REFUND_DUE', customerEmail: null },
     });
     if (count > 0)
       this.logger.error(`REFUND DUE: order ${orderId} could not be applied (${reason})`);
@@ -231,7 +311,12 @@ export class PaymentsService implements OnModuleInit {
   /** Records a confirmed payment and announces it. Safe to run more than once for an order. */
   private async settle(
     order: PaymentOrder,
-    payment: { sessionId: string; amountTotal: number | null; currency: string | null },
+    payment: {
+      sessionId: string;
+      amountTotal: number | null;
+      currency: string | null;
+      customerEmail: string | null;
+    },
   ): Promise<void> {
     const alreadyPaid = await this.prisma.paymentOrder.findFirst({
       where: { giftId: order.giftId, status: 'PAID', NOT: { id: order.id } },
@@ -241,22 +326,23 @@ export class PaymentsService implements OnModuleInit {
       stripeSessionId: payment.sessionId,
       amountTotal: payment.amountTotal,
       currency: payment.currency,
+      customerEmail: payment.customerEmail ?? order.customerEmail,
     };
     if (alreadyPaid || order.status === 'REFUND_DUE') {
       // A second payment for the same gift got through (a session opened before the first payment).
       await this.prisma.paymentOrder.update({
         where: { id: order.id },
-        data: { ...paid, status: 'REFUND_DUE' },
+        data: { ...paid, status: 'REFUND_DUE', customerEmail: null },
       });
       this.logger.error(`REFUND DUE: order ${order.id} paid again for gift ${order.giftId}`);
       return;
     }
 
-    await this.prisma.paymentOrder.update({
+    const settled = await this.prisma.paymentOrder.update({
       where: { id: order.id },
       data: { ...paid, status: 'PAID' },
     });
-    await this.announce(order);
+    await this.announce(settled);
   }
 
   /** Tells the other modules that an order was paid. */
@@ -266,6 +352,7 @@ export class PaymentsService implements OnModuleInit {
       orderId: order.id,
       giftId: order.giftId,
       customSlug: order.customSlug,
+      customerEmail: order.customerEmail,
     });
   }
 }

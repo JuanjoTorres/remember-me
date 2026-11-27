@@ -37,9 +37,15 @@ Read this before adding, changing or removing an environment variable of the API
 | `STRIPE_API_BASE_URL`          | no                         | —             | Points the Stripe SDK at a local stand-in. Automated tests only                                           |
 | `RATE_LIMIT_PER_MINUTE`        | no                         | `240`         | Requests per client IP per minute, all endpoints                                                          |
 | `GIFT_CREATION_LIMIT_PER_HOUR` | no                         | `30`          | Gifts one client IP may start per hour                                                                    |
+| `LINK_LOOKUP_MISS_LIMIT`       | no                         | `30`          | Links leading to no gift that one client IP may open in ten minutes before all its lookups are refused    |
+| `SLUG_CHECK_LIMIT`             | no                         | `60`          | Link availability checks one client IP may make in ten minutes                                            |
 | `TRUST_PROXY_HOPS`             | no                         | `0`           | Number of reverse proxies in front of the API                                                             |
 | `EVENT_BUS_DRIVER`             | no                         | `memory`      | `memory` or `redis`                                                                                       |
 | `REDIS_URL`                    | only with the redis driver | —             | `redis` or `rediss` URL                                                                                   |
+| `SCHEDULED_JOBS`               | no                         | `on`          | `on` or `off`: whether this instance runs the daily jobs. The integration tests set `off`                 |
+| `MAIL_DRIVER`                  | no                         | `log`         | `log` sends nothing (the anniversary email waits); `resend` sends through Resend                          |
+| `RESEND_API_KEY`               | only with `resend`         | —             | Resend API key (`re_` prefix). An empty string counts as not set                                          |
+| `MAIL_FROM`                    | only with `resend`         | —             | Sender of every email, on a domain verified in Resend. An empty string counts as not set                  |
 
 ## Environment restrictions (`superRefine` in `EnvSchema`)
 
@@ -47,6 +53,7 @@ Read this before adding, changing or removing an environment variable of the API
 - Production: `STRIPE_SECRET_KEY` must be a live key. Staging accepts test keys.
 - Staging and production: `STRIPE_API_BASE_URL` must not be set.
 - Any environment: `EVENT_BUS_DRIVER=redis` requires `REDIS_URL`.
+- Any environment: `MAIL_DRIVER=resend` requires `RESEND_API_KEY` and `MAIL_FROM`.
 
 ## Rules for a new variable
 

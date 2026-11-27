@@ -10,9 +10,13 @@ import {
 import request from 'supertest';
 import Stripe from 'stripe';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SESSION_CHECK_INTERVAL_MS } from '../src/modules/payments/payments.service.js';
+import {
+  PaymentsService,
+  SESSION_CHECK_INTERVAL_MS,
+} from '../src/modules/payments/payments.service.js';
 import { STRIPE_CLIENT } from '../src/modules/payments/stripe-payment-gateway.js';
 import {
+  GiftDeletedEvent,
   PaymentSucceededEvent,
   type PaymentSucceededPayload,
 } from '../src/shared/events/contracts.js';
@@ -34,7 +38,27 @@ interface StripeCall {
 /** A stand-in for api.stripe.com that records what the real Stripe SDK sends. */
 /** Sessions the stand-in reports as paid when they are retrieved. */
 const paidSessions = new Set<string>();
+/** The address the buyer types in Stripe Checkout. */
+const BUYER_EMAIL = 'buyer@example.com';
 const expiredSessions = new Set<string>();
+/** The next session creation, which the stand-in keeps unanswered until the test lets it go. */
+let heldSessionCreation: { arrive: () => void; released: Promise<void> } | null = null;
+
+/**
+ * Makes the stand-in hold back its answer to the next session creation. Tests about simultaneous
+ * requests decide the order of events with this, never with a delay: `arrived` resolves once the
+ * request is at Stripe, and nothing is answered before `release` is called.
+ */
+function holdNextSessionCreation(): { arrived: Promise<void>; release: () => void } {
+  let arrive!: () => void;
+  let release!: () => void;
+  const arrived = new Promise<void>((resolve) => (arrive = resolve));
+  const released = new Promise<void>((resolve) => (release = resolve));
+  heldSessionCreation = { arrive, released };
+  return { arrived, release };
+}
+/** How many of the next session creations the stand-in answers with an error. */
+let failSessionCreations = 0;
 
 function startFakeStripe(calls: StripeCall[]): Promise<Server> {
   const server = createServer((req, res) => {
@@ -48,17 +72,31 @@ function startFakeStripe(calls: StripeCall[]): Promise<Server> {
         form: new URLSearchParams(body),
         idempotencyKey: req.headers['idempotency-key'] as string | undefined,
       });
+      const unavailable = () => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { type: 'api_error', message: 'unavailable' } }));
+      };
       const json = (payload: object) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(payload));
       };
       if (req.method === 'POST' && path === '/v1/checkout/sessions') {
         const id = `cs_test_${randomUUID().replaceAll('-', '')}`;
-        return json({
-          id,
-          object: 'checkout.session',
-          url: `https://checkout.stripe.test/c/pay/${id}`,
-        });
+        const fail = failSessionCreations > 0;
+        if (fail) failSessionCreations -= 1;
+        const answer = () =>
+          fail
+            ? unavailable()
+            : json({
+                id,
+                object: 'checkout.session',
+                url: `https://checkout.stripe.test/c/pay/${id}`,
+              });
+        const held = heldSessionCreation;
+        if (!held) return answer();
+        heldSessionCreation = null;
+        held.arrive();
+        return void held.released.then(answer);
       }
       const retrieve = /^\/v1\/checkout\/sessions\/(cs_test_\w+)$/.exec(path);
       if (req.method === 'GET' && retrieve) {
@@ -69,6 +107,7 @@ function startFakeStripe(calls: StripeCall[]): Promise<Server> {
           status: expiredSessions.has(retrieve[1]!) ? 'expired' : 'open',
           amount_total: 499,
           currency: 'eur',
+          customer_details: { email: BUYER_EMAIL },
         });
       }
       const expire = /^\/v1\/checkout\/sessions\/(cs_test_\w+)\/expire$/.exec(path);
@@ -142,6 +181,24 @@ describe('payments', () => {
     return { client, gift: view, grant: view.grant };
   }
 
+  /**
+   * Tells when a checkout request starts waiting for the page that an earlier request is still
+   * creating. It only observes the service; the wait itself runs unchanged.
+   */
+  const nextRequestWaitingForAPage = (): { started: Promise<void>; stop: () => void } => {
+    const service = app.get(PaymentsService) as unknown as {
+      checkoutUrlOf(orderId: string): Promise<string | null>;
+    };
+    const wait = service.checkoutUrlOf.bind(service);
+    let start!: () => void;
+    const started = new Promise<void>((resolve) => (start = resolve));
+    const spy = vi.spyOn(service, 'checkoutUrlOf').mockImplementation((orderId) => {
+      start();
+      return wait(orderId);
+    });
+    return { started, stop: () => spy.mockRestore() };
+  };
+
   const checkout = (grant: string | undefined, body: object) => {
     const call = http().post('/payments/checkout-session');
     return (grant ? call.set('Authorization', `Bearer ${grant}`) : call).send(body);
@@ -181,6 +238,7 @@ describe('payments', () => {
         payment_status: 'paid',
         amount_total: 499,
         currency: 'eur',
+        customer_details: { email: BUYER_EMAIL },
         client_reference_id: orderId,
         metadata: { orderId },
       },
@@ -245,19 +303,19 @@ describe('payments', () => {
 
     it('adds the custom link as a second line item (order bump)', async () => {
       const { gift } = await readyGift();
-      const { orderId } = await startCheckout(gift, 'te-quiero-ana');
+      const { orderId } = await startCheckout(gift, 'te-quiero-ana-x9k2');
       const form = Object.fromEntries(stripeCalls.at(-1)!.form);
       expect(form).toMatchObject({
         'line_items[0][price]': 'price_premium_test',
         'line_items[1][price]': 'price_custom_slug_test',
         'line_items[1][quantity]': '1',
-        'metadata[customSlug]': 'te-quiero-ana',
+        'metadata[customSlug]': 'te-quiero-ana-x9k2',
       });
       expect(
         await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } }),
       ).toMatchObject({
         includeCustomSlug: true,
-        customSlug: 'te-quiero-ana',
+        customSlug: 'te-quiero-ana-x9k2',
       });
     });
 
@@ -298,6 +356,117 @@ describe('payments', () => {
       expect(sessions.size).toBe(1);
       expect(stripeCalls.filter((call) => call.path === '/v1/checkout/sessions')).toHaveLength(1);
       expect(await prisma().paymentOrder.count({ where: { giftId: gift.id } })).toBe(1);
+    });
+
+    it('waits for the page that a request sent a moment earlier is still creating', async () => {
+      const { gift } = await readyGift();
+      const body = { giftId: gift.id, ...urls(gift.id) };
+      // Stripe answers the first tap only once the second one is waiting for its page.
+      const stripe = holdNextSessionCreation();
+      const waiting = nextRequestWaitingForAPage();
+      try {
+        const first = checkout(gift.grant, body).then((response) => response);
+        await stripe.arrived;
+        const second = checkout(gift.grant, body).then((response) => response);
+        await waiting.started;
+        stripe.release();
+        expect((await second).status).toBe(201);
+        expect((await second).body).toEqual((await first).body);
+      } finally {
+        stripe.release();
+        waiting.stop();
+      }
+      expect(stripeCalls.filter((call) => call.path === '/v1/checkout/sessions')).toHaveLength(1);
+      expect(await prisma().paymentOrder.count({ where: { giftId: gift.id } })).toBe(1);
+    });
+
+    it('lets the customer try again at once after Stripe failed, with a true message', async () => {
+      const { gift } = await readyGift();
+      const body = { giftId: gift.id, ...urls(gift.id) };
+      failSessionCreations = 1;
+      const failed = await checkout(gift.grant, body).expect(500);
+      // Not "already paid": nothing was paid.
+      expect(failed.body.code).toBe('INTERNAL');
+      const orders = () => prisma().paymentOrder.findMany({ where: { giftId: gift.id } });
+      expect((await orders()).map((order) => order.status)).toEqual(['EXPIRED']);
+
+      const waiting = nextRequestWaitingForAPage();
+      let waited = false;
+      void waiting.started.then(() => (waited = true));
+      const retried = await checkout(gift.grant, body).expect(201);
+      waiting.stop();
+      // Answered straight away, not after waiting for the page of the failed attempt.
+      expect(waited).toBe(false);
+      expect(retried.body.checkoutUrl).toMatch(/^https:\/\/checkout\.stripe\.test\//);
+      expect((await orders()).map((order) => order.status).sort()).toEqual(['EXPIRED', 'PENDING']);
+    });
+
+    it('opens its own checkout when the request it was waiting for fails', async () => {
+      const { gift } = await readyGift();
+      const body = { giftId: gift.id, ...urls(gift.id) };
+      const stripe = holdNextSessionCreation();
+      const waiting = nextRequestWaitingForAPage();
+      failSessionCreations = 1;
+      try {
+        const first = checkout(gift.grant, body).then((response) => response);
+        await stripe.arrived;
+        const second = checkout(gift.grant, body).then((response) => response);
+        await waiting.started;
+        stripe.release();
+        expect((await first).status).toBe(500);
+        const answered = await second;
+        expect(answered.status).toBe(201);
+        expect(answered.body.checkoutUrl).toMatch(/^https:\/\/checkout\.stripe\.test\//);
+      } finally {
+        stripe.release();
+        waiting.stop();
+        failSessionCreations = 0;
+      }
+    });
+
+    it('leaves one payable session when a request for another link overtakes a slow one', async () => {
+      const { gift } = await readyGift();
+      const body = { giftId: gift.id, ...urls(gift.id) };
+      const slug = `otro-enlace-${randomUUID().slice(0, 8)}`;
+      // Only the first creation is held: the newer request gets its page while the slow one waits.
+      const stripe = holdNextSessionCreation();
+      try {
+        const slow = checkout(gift.grant, body).then((response) => response);
+        await stripe.arrived;
+        const newer = await checkout(gift.grant, {
+          ...body,
+          includeCustomSlug: true,
+          customSlug: slug,
+        }).expect(201);
+        stripe.release();
+        // The overtaken request gets no page, and the session Stripe made for it is expired.
+        expect((await slow).status).toBe(500);
+        const created = stripeCalls.filter((call) => call.path === '/v1/checkout/sessions');
+        const expired = stripeCalls.filter((call) => call.path.endsWith('/expire'));
+        expect(created).toHaveLength(2);
+        expect(expired).toHaveLength(1);
+        expect(expired[0]!.path).not.toContain(newer.body.checkoutUrl.split('/').pop());
+        expect(
+          await prisma().paymentOrder.findMany({
+            where: { giftId: gift.id, status: 'PENDING' },
+          }),
+        ).toMatchObject([{ id: newer.body.orderId, customSlug: slug }]);
+      } finally {
+        stripe.release();
+      }
+    });
+
+    it('replaces an order whose checkout page was never created', async () => {
+      const { gift } = await readyGift();
+      // A request that died after reserving the order, long enough ago not to be in flight.
+      const dead = await prisma().paymentOrder.create({
+        data: { giftId: gift.id, createdAt: new Date(Date.now() - 60_000) },
+      });
+      const { orderId } = await startCheckout(gift);
+      expect(orderId).not.toBe(dead.id);
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: dead.id } })).status,
+      ).toBe('EXPIRED');
     });
 
     it('expires the previous session when the creator changes the order', async () => {
@@ -377,13 +546,21 @@ describe('payments', () => {
       const response = await deliver(paidEvent(orderId, sessionId)).expect(200);
       expect(response.body).toEqual({ received: true });
 
-      expect(published).toEqual([{ orderId, giftId: gift.id, customSlug: null }]);
+      expect(published).toEqual([
+        { orderId, giftId: gift.id, customSlug: null, customerEmail: BUYER_EMAIL },
+      ]);
       expect(
         await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } }),
       ).toMatchObject({
         status: 'PAID',
         amountTotal: 499,
         currency: 'eur',
+        customerEmail: BUYER_EMAIL,
+      });
+      // The gift keeps the buyer's address (for the anniversary email) and never expires.
+      expect(await prisma().gift.findUniqueOrThrow({ where: { id: gift.id } })).toMatchObject({
+        customerEmail: BUYER_EMAIL,
+        expiresAt: null,
       });
       const view = (await client.get()).body as GiftEditorView;
       expect(view).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED' });
@@ -441,7 +618,7 @@ describe('payments', () => {
       const view = (await client.get()).body as GiftEditorView;
       expect(view).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED', customSlugPending: true });
       expect(view.slug).not.toBe(slug);
-      await client.changeSlug(`${slug}-2`).expect(200);
+      await client.changeSlug(`${slug}-2026`).expect(200);
     });
 
     it('waits for the money with delayed payment methods', async () => {
@@ -590,7 +767,9 @@ describe('payments', () => {
 
       later();
       expect((await confirm(gift.grant).expect(200)).body).toEqual({ status: 'PAID' });
-      expect(published).toEqual([{ orderId, giftId: gift.id, customSlug: null }]);
+      expect(published).toEqual([
+        { orderId, giftId: gift.id, customSlug: null, customerEmail: BUYER_EMAIL },
+      ]);
       expect((await client.get()).body).toMatchObject({ plan: 'PREMIUM', status: 'PUBLISHED' });
       expect(
         await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } }),
@@ -678,6 +857,50 @@ describe('payments', () => {
       // The dead session is not handed out again.
       const second = await startCheckout(gift);
       expect(second.sessionId).not.toBe(first.sessionId);
+    });
+  });
+
+  describe('personal data', () => {
+    it("forgets the buyer's email when the gift is deleted, and keeps the order", async () => {
+      const { gift, client } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      await deliver(paidEvent(orderId, sessionId)).expect(200);
+      const order = () => prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } });
+      expect((await order()).customerEmail).toBe(BUYER_EMAIL);
+
+      await client.remove().expect(204);
+      expect(await order()).toMatchObject({
+        status: 'PAID',
+        amountTotal: 499,
+        customerEmail: null,
+      });
+
+      // The announcement can be delivered more than once.
+      await app.get(EventBus).publish(GiftDeletedEvent, { giftId: gift.id });
+      expect((await order()).customerEmail).toBeNull();
+    });
+
+    it('keeps no address on an order that could not be delivered', async () => {
+      const { gift, client } = await readyGift();
+      const { orderId, sessionId } = await startCheckout(gift);
+      // The gift is deleted while the customer is still at the checkout.
+      await client.remove().expect(204);
+      await deliver(paidEvent(orderId, sessionId)).expect(200);
+      expect(
+        await prisma().paymentOrder.findUniqueOrThrow({ where: { id: orderId } }),
+      ).toMatchObject({ status: 'REFUND_DUE', amountTotal: 499, customerEmail: null });
+    });
+
+    it('leaves the orders of other gifts alone', async () => {
+      const kept = await readyGift();
+      const keptCheckout = await startCheckout(kept.gift);
+      await deliver(paidEvent(keptCheckout.orderId, keptCheckout.sessionId)).expect(200);
+      const deleted = await readyGift();
+      await deleted.client.remove().expect(204);
+      expect(
+        (await prisma().paymentOrder.findUniqueOrThrow({ where: { id: keptCheckout.orderId } }))
+          .customerEmail,
+      ).toBe(BUYER_EMAIL);
     });
   });
 

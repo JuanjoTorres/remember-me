@@ -1,8 +1,8 @@
 import { devices, expect, test } from '@playwright/test';
 import { PHOTO } from './fixtures';
-import { addTextCard, recordScripts } from './helpers';
+import { addTextCard, openPreview, recordScripts } from './helpers';
 
-test('a creator builds a free gift, hits the free limits and publishes it; the recipient opens it', async ({
+test('a creator tries everything for free, previews the gift and publishes it free; the recipient opens it; the creator deletes it', async ({
   page,
 }) => {
   await page.goto('/');
@@ -30,49 +30,79 @@ test('a creator builds a free gift, hits the free limits and publishes it; the r
   await expect(sheet).toBeHidden();
   await expect(page.getByText('Remember this day?')).toBeVisible();
 
-  // Cannot publish yet: the surprise is missing
+  // Cannot preview yet: the surprise is missing
   await expect(page.getByText('Still missing: the surprise')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Publish free' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Preview and publish' })).toBeDisabled();
 
-  // Free limits open the upgrade sheet
   await addTextCard(page, 'Second card');
   await addTextCard(page, 'Third card');
-  await expect(page.getByText('3 of 3 cards on the free plan.')).toBeVisible();
-  await page.getByRole('button', { name: '+ Photo & text' }).click();
+  await expect(page.getByText(/3 cards so far\. Up to 3 are free/)).toBeVisible();
+  await expect(page.getByTestId('pro-summary')).toHaveCount(0);
+
+  // Nothing is blocked while editing: a fourth card and a premium reveal are free to try, and the
+  // editor only keeps count of what is PRO.
   const upgrade = page.getByRole('dialog', { name: 'The full experience' });
-  await expect(upgrade.getByText(/up to 3 cards/)).toBeVisible();
-  await upgrade.getByRole('checkbox').check();
-  await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('Te quiero, Sarah');
-  await expect(upgrade.getByTestId('slug-preview')).toHaveText(
-    'localhost:3000/for/te-quiero-sarah',
+  await addTextCard(page, 'Fourth card');
+  await expect(upgrade).toBeHidden();
+  await expect(page.getByTestId('pro-summary')).toContainText('More than 3 cards');
+  await page.getByRole('button', { name: /Scratch card/ }).click();
+  await expect(page.getByRole('button', { name: /Scratch card/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
   );
-  await expect(upgrade.getByText('Available')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('pro-summary')).toContainText('More than 3 cards · Premium reveal');
   await expect(upgrade).toBeHidden();
 
-  await page.getByRole('button', { name: /Voice note/ }).click();
-  await expect(upgrade.getByText(/Voice notes and trivia/)).toBeVisible();
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /Scratch card/ }).click();
-  await expect(upgrade.getByText(/scratch card, the boarding pass/)).toBeVisible();
-  await page.keyboard.press('Escape');
+  // Back within the free plan: the summary goes away
+  await page.getByRole('button', { name: 'Remove card' }).last().click();
+  await expect(page.getByText('Fourth card')).toBeHidden();
+  await page.getByRole('button', { name: /Envelope/ }).click();
+  await expect(page.getByTestId('pro-summary')).toHaveCount(0);
 
-  // The surprise, then publish for free
+  // The surprise, then the preview: the whole experience, not published yet
   await page.getByRole('textbox', { name: /^The surprise/ }).fill('We are going to Lisbon!');
   await page.getByRole('textbox', { name: /^Message/ }).fill('Pack light.');
   await page.getByRole('heading', { name: 'The surprise', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Publish free' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Publish free' }).click();
+  await openPreview(page);
+  await expect(page.getByRole('heading', { name: 'For Sarah' })).toBeVisible();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.getByText('Remember this day?')).toBeVisible();
+  await expect(page.getByTestId('publish-note')).toContainText(
+    'Free: it ends with “Created with kardoo.me”',
+  );
 
+  // No PRO feature in it: it is published for free, straight to its QR code
+  await page.getByRole('button', { name: 'Publish and get QR' }).click();
+  await expect(page).toHaveURL(/\/create\/[0-9a-f-]{36}\/published$/);
+  await expect(upgrade).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Your gift is live' })).toBeVisible();
-  const link = page.getByRole('link', { name: /localhost:3000\/for\/sarah-[a-z0-9]{6}$/ });
+  await expect(page.getByText(/You can still fix typos and swap photos until/)).toBeVisible();
+  await expect(page.getByText(/Free gifts stay online until/)).toBeVisible();
+  const link = page.getByRole('link', { name: /localhost:3000\/for\/sarah-[a-z0-9]{8}$/ });
   await expect(link).toBeVisible();
   await expect(page.getByRole('img', { name: 'QR code of your gift' })).toBeVisible();
 
   // The QR code downloads as a PNG
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download QR' }).click();
-  expect((await download).suggestedFilename()).toMatch(/^remember-me-sarah-[a-z0-9]{6}\.png$/);
+  expect((await download).suggestedFilename()).toMatch(/^remember-me-sarah-[a-z0-9]{8}\.png$/);
+
+  // Back in the editor the recipient's name is fixed; the rest can still be corrected
+  await page.getByRole('link', { name: 'Back to the editor' }).click();
+  await expect(page).toHaveURL(/\/create\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole('textbox', { name: /^For/ })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'From' })).toBeEnabled();
+  // A published free gift keeps the limits of its plan
+  await page.getByRole('button', { name: /Voice note/ }).click();
+  await expect(upgrade.getByText(/Voice notes and trivia/)).toBeVisible();
+  await upgrade.getByRole('checkbox').check();
+  await upgrade.getByRole('textbox', { name: 'Custom link' }).fill('Te quiero, Sarah');
+  await upgrade.getByRole('textbox', { name: 'Ending' }).fill('x9k2');
+  await expect(upgrade.getByTestId('slug-preview')).toHaveText(
+    'localhost:3000/for/te-quiero-sarah-x9k2',
+  );
+  await page.keyboard.press('Escape');
+  await expect(upgrade).toBeHidden();
 
   // The private edit link reopens the editor in a clean browser
   await page.getByRole('button', { name: 'Copy edit link' }).click();
@@ -144,6 +174,7 @@ test('a creator builds a free gift, hits the free limits and publishes it; the r
   for (const marker of [
     'x-edit-token',
     'slug-preview',
+    'publish-note',
     'checkout-session',
     'remember-me:gifts',
     'stripe',
@@ -158,4 +189,17 @@ test('a creator builds a free gift, hits the free limits and publishes it; the r
   expect((await lostPage.goto('/for/no-existe-este-regalo'))?.status()).toBe(404);
   await expect(lostPage.getByRole('heading', { name: 'Este regalo no está aquí' })).toBeVisible();
   await lost.close();
+
+  // --- The creator deletes the gift for good ---
+  const zone = page.getByRole('region', { name: 'Danger zone' });
+  await zone.getByRole('button', { name: 'Delete this gift' }).click();
+  await expect(zone.getByRole('button', { name: 'Delete forever' })).toBeDisabled();
+  await zone.getByRole('textbox', { name: 'Type DELETE to confirm' }).fill('DELETE');
+  await zone.getByRole('button', { name: 'Delete forever' }).click();
+  await expect(page).toHaveURL(/localhost:3000\/$/);
+  // The link stops working and the photo is gone from storage
+  expect((await page.request.get(giftUrl)).status()).toBe(404);
+  await expect
+    .poll(async () => Promise.all(mediaRequests.map((url) => fetch(url).then((r) => r.status))))
+    .toEqual(mediaRequests.map(() => 404));
 });

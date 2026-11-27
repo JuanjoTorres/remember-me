@@ -85,6 +85,19 @@ Ask first: `CLAUDE.md` fixes the list of modules. If the user agrees:
 3. Give it its own tables (no relation to tables of other modules) and talk to others through events.
 4. If it needs gift facts, protect its endpoints with `GiftGrantGuard` and read the claims.
 
+## Mail and scheduled jobs
+
+- `apps/api/src/shared/mail/mailer.ts` defines the abstract `Mailer` (`send`, and `delivers`, false when
+  messages go nowhere). `apps/api/src/shared/mail/mail.module.ts` is global and picks the driver from
+  `MAIL_DRIVER`: `apps/api/src/shared/mail/log-mailer.ts` (logs the subject, never the address) or
+  `apps/api/src/shared/mail/resend-mailer.ts` (Resend HTTP API through `fetch`, no SDK). Inject `Mailer`,
+  never a driver. Tests override the provider with a recording fake.
+- `ScheduleModule.forRoot()` (`@nestjs/schedule`) is imported in `apps/api/src/app.module.ts`. A scheduled
+  job lives in the module that owns the data, in a `*.cron.ts` class that only schedules and logs; the
+  work goes in a service that takes `now` as a parameter so tests can call it directly. Jobs run on every
+  API instance, so they must be safe to run concurrently (see
+  `.claude/skills/backend/references/gifts.md`).
+
 ## Decisions
 
 None recorded yet.

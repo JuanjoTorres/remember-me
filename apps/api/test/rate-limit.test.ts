@@ -33,7 +33,7 @@ describe('rate limits', () => {
     expect(refused.body.code).toBe('RATE_LIMITED');
     expect(refused.headers['retry-after-gift-creation']).toBeDefined();
     await request(app.getHttpServer())
-      .get('/gifts/slug-availability')
+      .get('/gifts/check-slug')
       .query({ slug: 'still-works' })
       .expect(200);
   });

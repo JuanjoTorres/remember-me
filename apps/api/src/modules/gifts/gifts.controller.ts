@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Ip,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -31,6 +32,7 @@ import {
 import { z } from 'zod';
 import { ZodPipe } from '../../shared/http/zod.pipe.js';
 import { GiftsService } from './gifts.service.js';
+import { LinkGuessGuard } from './link-guess-guard.js';
 
 const GiftId = () => Param('giftId', new ParseUUIDPipe());
 const EditToken = () => Headers(EDIT_TOKEN_HEADER);
@@ -38,7 +40,10 @@ const EditToken = () => Headers(EDIT_TOKEN_HEADER);
 /** Editor endpoints. Everything except creation needs the gift's edit token. */
 @Controller('gifts')
 export class GiftsController {
-  constructor(private readonly gifts: GiftsService) {}
+  constructor(
+    private readonly gifts: GiftsService,
+    private readonly guesses: LinkGuessGuard,
+  ) {}
 
   @Post()
   create(
@@ -47,11 +52,14 @@ export class GiftsController {
     return this.gifts.create(body);
   }
 
-  @Get('slug-availability')
-  slugAvailability(
+  @Get('check-slug')
+  checkSlug(
     @Query('slug', new ZodPipe(z.string().max(200))) slug: string,
+    @Ip() client: string,
   ): Promise<SlugAvailability> {
-    return this.gifts.slugAvailability(slug);
+    // The answer says whether a link exists, so it must not be a way to look for gifts.
+    this.guesses.countCheck(client);
+    return this.gifts.checkSlug(slug);
   }
 
   @Get(':giftId')

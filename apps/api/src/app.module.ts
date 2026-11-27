@@ -1,5 +1,6 @@
 import { type ExecutionContext, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { ConfigModule, ENV } from './config/config.module.js';
@@ -11,6 +12,7 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
 import { QrModule } from './modules/qr/qr.module.js';
 import { AuthModule } from './shared/auth/auth.module.js';
 import { EventsModule } from './shared/events/events.module.js';
+import { MailModule } from './shared/mail/mail.module.js';
 import { PrismaModule } from './shared/prisma/prisma.module.js';
 
 function isGiftCreation(request: Request): boolean {
@@ -35,8 +37,10 @@ function isGiftCreation(request: Request): boolean {
         },
       ],
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     EventsModule,
+    MailModule,
     AuthModule,
     GiftsModule,
     MediaModule,
